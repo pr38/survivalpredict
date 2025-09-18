@@ -8,7 +8,9 @@ def _reverse_cumsum_pt(a):
     return pt.flip(pt.cumsum(pt.flip(a)))
 
 
-def get_breslow_neg_log_likelihood_loss_jacobian_hessian_function_pytensor() -> pytensor.compile.function.types.Function:
+def get_breslow_neg_log_likelihood_loss_jacobian_hessian_function_pytensor() -> (
+    pytensor.compile.function.types.Function
+):
 
     weights = pt.vector("weights", dtype="float64")
     data = pt.matrix("data", dtype="float64")
@@ -41,7 +43,6 @@ def get_breslow_neg_log_likelihood_loss_jacobian_hessian_function_pytensor() -> 
             time_return_inverse,
         ],
         outputs=[loss, jacobian, hessian],
-        mode="NUMBA",
     )
 
     return neg_log_likelihood_loss_jacobian_hessian
@@ -82,7 +83,9 @@ def train_cox_ph_breslow(X, times, events, alpha, l1_ratio, weights, max_iter, t
     return weights, loss
 
 
-def get_efron_neg_log_likelihood_loss_jacobian_hessian_function() -> pytensor.compile.function.types.Function:
+def get_efron_neg_log_likelihood_loss_jacobian_hessian_function() -> (
+    pytensor.compile.function.types.Function
+):
 
     weights = pt.vector("weights", dtype="float64")
     data = pt.matrix("data", dtype="float64")
@@ -122,7 +125,6 @@ def get_efron_neg_log_likelihood_loss_jacobian_hessian_function() -> pytensor.co
             time_return_inverse,
         ],
         outputs=[loss, jacobian, hessian],
-        mode="NUMBA",
     )
 
     return neg_log_likelihood_loss_jacobian_hessian

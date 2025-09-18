@@ -3,8 +3,7 @@ from typing import Optional
 import numpy as np
 
 from .nonparametric import get_kaplan_meier_survival_curve_from_time_as_int_
-from .utils import (_as_bool_np_array, _as_int, _as_int_np_array,
-                    _as_numeric_np_array)
+from .utils import _as_bool_np_array, _as_int, _as_int_np_array, _as_numeric_np_array
 
 
 def _brier_scores_ipcw(
@@ -97,7 +96,7 @@ def _integrated_brier_score_ipcw(
     times: np.ndarray,
     events_for_ipcw: Optional[np.ndarray] = None,
     times_for_ipcw: Optional[np.ndarray] = None,
-    average_by_time: Optional[bool] = True,
+    average_by_time: Optional[bool] = False,
     max_time: Optional[int] = None,
 ):
 
@@ -134,7 +133,7 @@ def integrated_brier_score_ipcw(
     times: np.ndarray,
     events_for_ipcw: Optional[np.ndarray] = None,
     times_for_ipcw: Optional[np.ndarray] = None,
-    average_by_time: Optional[bool] = True,
+    average_by_time: Optional[bool] = False,
     max_time: Optional[int] = None,
 ) -> np.ndarray:
     times = _as_int_np_array(times)
@@ -222,7 +221,7 @@ def _integrated_brier_score_administrative(
     events: np.ndarray,
     times: np.ndarray,
     max_time: Optional[int] = None,
-    average_by_time: Optional[bool] = True,
+    average_by_time: Optional[bool] = False,
 ):
 
     if max_time is None:
@@ -246,7 +245,7 @@ def integrated_brier_score_administrative(
     events: np.ndarray,
     times: np.ndarray,
     max_time: Optional[int] = None,
-    average_by_time: Optional[bool] = True,
+    average_by_time: Optional[bool] = False,
 ):
     times = _as_int_np_array(times)
     events = _as_bool_np_array(events)

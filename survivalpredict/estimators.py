@@ -113,3 +113,9 @@ class CoxProportionalHazard(SurvivalPredictBase):
             ).T
 
             return np.hstack([survival, impulted_values])
+
+    def predict_risk(self,X):
+        check_is_fitted(self)
+
+        return np.exp(np.dot(X, self.coef_))
+
