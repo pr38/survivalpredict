@@ -136,7 +136,7 @@ efron_neg_log_likelihood_loss_jacobian_hessian = (
 
 
 index_per_not_censored_times_nb_signature = nb.types.Array(nb.types.int64, 1, "C")(
-    nb.types.Array(nb.types.int64, 1, "C"), nb.types.Array(nb.types.bool, 1, "C")
+    nb.types.Array(nb.types.int64, 1, "C"), nb.types.Array(nb.types.bool_, 1, "C")
 )
 
 
@@ -204,6 +204,123 @@ def train_cox_ph_efron(X, times, events, alpha, l1_ratio, weights, max_iter, tol
             l_div_m,
             n_unique_times,
             time_return_inverse,
+        )
+
+        if abs(last_loss - loss) <= tol:
+            break
+        elif (loss < last_loss) & (not half_step):
+            last_loss = loss
+            weights = weights - np.dot(np.linalg.inv(hessian), jacobian)
+        elif (loss < last_loss) & half_step:
+            last_loss = loss
+            weights = weights - (0.5 * np.dot(np.linalg.inv(hessian), jacobian))
+        else:
+            if half_step:
+                break
+            else:
+                half_step = True
+
+    return weights, loss
+
+
+def get_stratified_breslow_neg_log_likelihood_loss_jacobian_hessian_function_pytensor() -> (
+    pytensor.compile.function.types.Function
+):
+
+    weights = pt.vector("weights", dtype="float64")
+    data = pt.matrix("data", dtype="float64")
+    n_unique_times = pt.scalar("n_unique_times", dtype="int64")
+    events = pt.vector("events", dtype="int64")
+    time_return_inverse_by_patition = pt.matrix(
+        "time_return_inverse_by_patition", dtype="int64"
+    )  # n_rows X n_strata matrix
+    partition_mask = pt.matrix(
+        "partition_mask", dtype="int64"
+    )  # n_rows X n_strata matrix
+
+    alpha = pt.scalar("alpha", dtype="float64")
+    l1_ratio = pt.scalar("l1_ratio", dtype="float64")
+
+    l1 = alpha * l1_ratio * pt.abs(weights).sum()
+    l2 = 0.5 * alpha * (1.0 - l1_ratio) * pt.square(weights).sum()
+
+    risk = pt.dot(data, weights)
+
+    def breslow_loss_per_strata(
+        time_return_inverse_pt, partition_mask, events, risk, n_unique_times
+    ):
+        risk_masked = risk * partition_mask
+        risk_exp_masked = pt.exp(risk) * partition_mask
+
+        risk_set = _reverse_cumsum_pt(
+            pt.bincount(
+                time_return_inverse_pt,
+                weights=risk_exp_masked,
+                minlength=n_unique_times,
+            )
+        )[time_return_inverse_pt]
+
+        return pt.sum(events * (risk_masked - pt.log(risk_set)))
+
+    loss_per_parition, _ = pytensor.map(
+        fn=breslow_loss_per_strata,
+        sequences=[time_return_inverse_by_patition.T, partition_mask.T],
+        non_sequences=[events, risk, n_unique_times],
+    )
+
+    loss = -pt.sum(loss_per_parition) + l1 + l2
+
+    jacobian = pytensor.gradient.jacobian(loss_per_parition, weights)
+    hessian = pytensor.gradient.hessian(loss_per_parition, weights)
+
+    stratified_breslow_neg_log_likelihood_loss_jacobian_hessian = pytensor.function(
+        [
+            weights,
+            data,
+            events,
+            alpha,
+            l1_ratio,
+            time_return_inverse_by_patition,
+            partition_mask,
+            n_unique_times,
+        ],
+        outputs=[loss, jacobian, hessian],
+    )
+    return stratified_breslow_neg_log_likelihood_loss_jacobian_hessian
+
+
+stratified_breslow_neg_log_likelihood_loss_jacobian_hessian = (
+    get_stratified_breslow_neg_log_likelihood_loss_jacobian_hessian_function_pytensor()
+)
+
+
+def train_cox_ph_stratified_breslow(
+    X, times, events, strata, alpha, l1_ratio, weights, max_iter, tol
+):
+    _, stata_index = np.unique(strata, return_inverse=True)
+    stata_index_unique = np.unique(stata_index)
+    partition_mask = stata_index == stata_index_unique[:, None]
+
+    unique_times, time_return_inverse = np.unique(times, return_inverse=True)
+    time_return_inverse_by_patition = time_return_inverse[:, None] * partition_mask.T
+
+    n_unique_times = len(unique_times)
+    last_loss = np.array(np.inf)
+    half_step = False
+
+    for _ in range(max_iter):
+        loss, jacobian, hessian = (
+            stratified_breslow_neg_log_likelihood_loss_jacobian_hessian(
+                weights,
+                X,
+                events,
+                alpha,
+                l1_ratio,
+                time_return_inverse_by_patition,
+                partition_mask,
+                n_unique_times,
+                time_return_inverse,
+            )
         )
 
         if abs(last_loss - loss) <= tol:

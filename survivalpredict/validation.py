@@ -8,8 +8,10 @@ from sklearn.base import clone
 from sklearn.model_selection import check_cv
 
 from .estimators import SurvivalPredictBase
-from .metrics import (_integrated_brier_score_administrative,
-                      _integrated_brier_score_ipcw)
+from .metrics import (
+    _integrated_brier_score_administrative,
+    _integrated_brier_score_ipcw,
+)
 from .utils import validate_survival_data
 
 

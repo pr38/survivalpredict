@@ -32,7 +32,7 @@ class CoxProportionalHazard(SurvivalPredictBase):
         l1_ratio: float = 0.5,
         max_iter: Optional[int] = 100,
         ties: Optional[Literal["breslow", "efron"]] = "breslow",
-        tol: int = 1e-9,
+        tol: float = 1e-9,
     ):
         self.alpha = alpha
         self.l1_ratio = l1_ratio
