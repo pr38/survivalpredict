@@ -5,6 +5,13 @@ import numpy as np
 from .nonparametric import get_kaplan_meier_survival_curve_from_time_as_int_
 from .utils import _as_bool_np_array, _as_int, _as_int_np_array, _as_numeric_np_array
 
+__all__ = [
+    "brier_scores_ipcw",
+    "integrated_brier_score_ipcw",
+    "brier_scores_administrative",
+    "integrated_brier_score_administrative",
+]
+
 
 def _brier_scores_ipcw(
     predictions: np.ndarray,
@@ -260,11 +267,3 @@ def integrated_brier_score_administrative(
     return _integrated_brier_score_administrative(
         predictions, events, times, max_time, average_by_time
     )
-
-
-__all__ = [
-    "brier_scores_ipcw",
-    "integrated_brier_score_ipcw",
-    "brier_scores_administrative",
-    "integrated_brier_score_administrative",
-]

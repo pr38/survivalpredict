@@ -1,6 +1,6 @@
 import numbers
 import time
-from typing import Callable, Literal, Optional
+from typing import Callable, Literal, Optional, Union
 
 import numpy as np
 from joblib.parallel import Parallel, delayed
@@ -13,6 +13,8 @@ from .metrics import (
     _integrated_brier_score_ipcw,
 )
 from .utils import validate_survival_data
+
+__all__ = ["sur_cross_val_score", "sur_cross_validate"]
 
 
 def _aggregate_score_dicts(scores):
@@ -36,16 +38,18 @@ def _sur_fit_and_score(
     train,
     test,
     verbose,
-    parameters,
-    score_params,
-    return_train_score,
-    return_estimator,
-    return_times,
-    return_parameters,
-    return_n_test_samples,
-    method,
+    parameters: dict,
+    fit_params: dict,
+    score_params: dict,
+    return_train_score: Optional[bool],
+    return_estimator: Optional[bool],
+    return_times: Optional[bool],
+    return_parameters: Optional[bool],
+    return_n_test_samples: Optional[bool],
+    method: Optional[Union[str, Callable]],
     brier_score_max_time: Optional[int] = None,
-    brier_score_average_by_time: Optional[bool] = True,
+    brier_score_average_by_time: Optional[bool] = False,
+    error_score: numbers.Real | Literal["raise"] = "raise",
 ):
 
     start_time = time.time()
@@ -62,81 +66,97 @@ def _sur_fit_and_score(
     events_train = events[train]
     events_test = events[test]
 
-    estimator.fit(X_train, times_train, events_train, **parameters)
+    if parameters:
+        estimator = estimator.set_params(**clone(parameters, safe=False))
 
-    if type(method) == str:
-        func = getattr(estimator, method)
-        predictions = func(X_test)
-        if return_train_score:
-            train_predictions = func(X_train)
+    try:
 
-    elif isinstance(method, Callable):
-        predictions = method(estimator, X_test)
-        if return_train_score:
-            train_predictions = method(estimator, X_train)
+        estimator.fit(X_train, times_train, events_train, **fit_params)
+        fit_time = time.time() - start_time
 
-    elif issubclass(type(estimator), SurvivalPredictBase):
-        predictions = estimator.predict(X_test, max_time=brier_score_max_time)
+    except:
 
-        if return_train_score:
-            train_predictions = estimator.predict(
-                X_train, max_time=brier_score_max_time
-            )
+        if error_score == "raise":
+            raise
+        elif isinstance(error_score, numbers.Number):
+            fit_time = time.time() - start_time
+            test_score = error_score
+            train_scores = error_score
+            score_time = float("nan")
 
     else:
-        predictions = estimator.predict(X_test)
 
-        if return_train_score:
-            train_predictions = estimator.predict(X_train)
+        if type(method) == str:
+            func = getattr(estimator, method)
+            predictions = func(X_test)
+            if return_train_score:
+                train_predictions = func(X_train)
 
-    fit_time = time.time() - start_time
+        elif isinstance(method, Callable):
+            predictions = method(estimator, X_test)
+            if return_train_score:
+                train_predictions = method(estimator, X_train)
 
-    if scorer == "integrated_brier_score_ipcw":
-        test_score = _integrated_brier_score_ipcw(
-            predictions,
-            events=events_test,
-            times=times_test,
-            events_for_ipcw=events_train,
-            times_for_ipcw=times_train,
-            max_time=brier_score_max_time,
-            average_by_time=brier_score_average_by_time,
-        )
-        if return_train_score:
-            train_scores = _integrated_brier_score_ipcw(
-                train_predictions,
-                events=events_train,
-                times=times_train,
+        elif issubclass(type(estimator), SurvivalPredictBase):
+            predictions = estimator.predict(X_test, max_time=brier_score_max_time)
+
+            if return_train_score:
+                train_predictions = estimator.predict(
+                    X_train, max_time=brier_score_max_time
+                )
+
+        else:
+            predictions = estimator.predict(X_test)
+
+            if return_train_score:
+                train_predictions = estimator.predict(X_train)
+
+        if scorer == "integrated_brier_score_ipcw":
+            test_score = _integrated_brier_score_ipcw(
+                predictions,
+                events=events_test,
+                times=times_test,
+                events_for_ipcw=events_train,
+                times_for_ipcw=times_train,
                 max_time=brier_score_max_time,
                 average_by_time=brier_score_average_by_time,
             )
+            if return_train_score:
+                train_scores = _integrated_brier_score_ipcw(
+                    train_predictions,
+                    events=events_train,
+                    times=times_train,
+                    max_time=brier_score_max_time,
+                    average_by_time=brier_score_average_by_time,
+                )
 
-    elif scorer == "integrated_brier_score_administrative":
-        test_score = _integrated_brier_score_administrative(
-            predictions,
-            events_test,
-            times_test,
-            max_time=brier_score_max_time,
-            average_by_time=brier_score_average_by_time,
-        )
-        if return_train_score:
-            train_scores = _integrated_brier_score_administrative(
-                train_predictions,
-                events=events_train,
-                times=times_train,
+        elif scorer == "integrated_brier_score_administrative":
+            test_score = _integrated_brier_score_administrative(
+                predictions,
+                events_test,
+                times_test,
                 max_time=brier_score_max_time,
                 average_by_time=brier_score_average_by_time,
             )
+            if return_train_score:
+                train_scores = _integrated_brier_score_administrative(
+                    train_predictions,
+                    events=events_train,
+                    times=times_train,
+                    max_time=brier_score_max_time,
+                    average_by_time=brier_score_average_by_time,
+                )
 
-    elif isinstance(scorer, Callable):
-        test_score = scorer(predictions, events_test, times_test, **score_params)
-        if return_train_score:
-            train_scores = scorer(
-                train_predictions, events_train, times_train, **score_params
-            )
-    else:
-        raise ValueError("unknown scorer")
+        elif isinstance(scorer, Callable):
+            test_score = scorer(predictions, events_test, times_test, **score_params)
+            if return_train_score:
+                train_scores = scorer(
+                    train_predictions, events_train, times_train, **score_params
+                )
+        else:
+            raise ValueError("unknown scorer")
 
-    score_time = time.time() - start_time - fit_time
+        score_time = time.time() - start_time - fit_time
 
     result = {}
     result["test_scores"] = test_score
@@ -177,6 +197,7 @@ def sur_cross_validate(
     return_parameters: Optional[bool] = None,
     return_n_test_samples: Optional[bool] = None,
     method: Optional[bool] = None,
+    error_score=np.nan,
 ):
     if return_train_score is None:
         return_train_score = False
@@ -218,8 +239,9 @@ def sur_cross_validate(
             train=train,
             test=test,
             verbose=verbose,
-            parameters=params,
-            score_params=scoring,
+            parameters=None,
+            fit_params=params,
+            score_params={},
             return_train_score=return_train_score,
             return_times=True,
             return_estimator=return_estimator,
@@ -228,11 +250,10 @@ def sur_cross_validate(
             method=method,
             brier_score_max_time=brier_score_max_time,
             brier_score_average_by_time=brier_score_average_by_time,
+            error_score=error_score,
         )
         for train, test in indices
     )
-
-    # return_parameters', 'return_n_test_samples', and 'method'
 
     return _aggregate_score_dicts(results)
 

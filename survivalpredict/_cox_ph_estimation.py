@@ -270,8 +270,8 @@ def get_stratified_breslow_neg_log_likelihood_loss_jacobian_hessian_function_pyt
 
     loss = -pt.sum(loss_per_parition) + l1 + l2
 
-    jacobian = pytensor.gradient.jacobian(loss_per_parition, weights)
-    hessian = pytensor.gradient.hessian(loss_per_parition, weights)
+    jacobian = pytensor.gradient.jacobian(loss, weights)
+    hessian = pytensor.gradient.hessian(loss, weights)
 
     stratified_breslow_neg_log_likelihood_loss_jacobian_hessian = pytensor.function(
         [
@@ -297,6 +297,7 @@ stratified_breslow_neg_log_likelihood_loss_jacobian_hessian = (
 def train_cox_ph_stratified_breslow(
     X, times, events, strata, alpha, l1_ratio, weights, max_iter, tol
 ):
+    """A rather experimental implmention for stratifed breslow cox. Uses autograd to directly get the jacobian, hessian; instead of adding the jacobian, hessian for each strata. The results are diffrent from the traditional implmention."""
     _, stata_index = np.unique(strata, return_inverse=True)
     stata_index_unique = np.unique(stata_index)
     partition_mask = stata_index == stata_index_unique[:, None]
