@@ -206,6 +206,9 @@ class Sur_BaseSearchCV(MetaEstimatorMixin, BaseEstimator, metaclass=ABCMeta):
 
         self._refit_best_estimator(X, times, events, params)
 
+        return self
+
+
 
 class Sur_GridSearchCV(Sur_BaseSearchCV):
 
