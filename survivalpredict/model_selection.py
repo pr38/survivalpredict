@@ -1,7 +1,6 @@
 import numbers
 import time
 from abc import ABCMeta, abstractmethod
-from numbers import Interval
 from itertools import product
 from typing import Any, Callable, Literal, Optional
 
@@ -11,7 +10,7 @@ from scipy.stats import rankdata
 from sklearn.base import BaseEstimator, MetaEstimatorMixin, _fit_context, clone
 from sklearn.model_selection import check_cv
 from sklearn.model_selection._search import ParameterGrid, ParameterSampler
-from sklearn.utils._param_validation import HasMethods, StrOptions
+from sklearn.utils._param_validation import HasMethods, StrOptions, Interval
 
 from .utils import validate_survival_data
 from .validation import _aggregate_score_dicts, _sur_fit_and_score
