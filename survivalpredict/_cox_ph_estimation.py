@@ -1,70 +1,180 @@
 import numba as nb
 import numpy as np
-import pytensor
-import pytensor.tensor as pt
 
 
-def _reverse_cumsum_pt(a):
-    return pt.flip(pt.cumsum(pt.flip(a)))
+def elasticnet_loss_jacobian_hessian(weights, alpha, l1_ratio):
+    l1 = alpha * l1_ratio * np.abs(weights).sum()
+    l2 = 0.5 * alpha * (1.0 - l1_ratio) * np.square(weights).sum()
+    elasticnet_loss = l1 + l2
+
+    l1_jacobian = np.sign(weights) * alpha * l1_ratio
+    l2_jacobian = 2 * weights * (0.5 * alpha) * (1 - l1_ratio)
+
+    elasticnet_jacobian = l1_jacobian + l2_jacobian
+
+    elasticnet_hessian = np.identity(weights.shape[0]) * (alpha - (l1_ratio * alpha))
+
+    return elasticnet_loss, elasticnet_jacobian, elasticnet_hessian
 
 
-def get_breslow_neg_log_likelihood_loss_jacobian_hessian_function_pytensor() -> (
-    pytensor.compile.function.types.Function
+def reverse_cumsum(a):
+    return np.flip(np.cumsum(np.flip(a)))
+
+
+@nb.njit(
+    nb.types.Array(nb.float64, 3, "A", False, aligned=True)(
+        nb.types.Array(nb.float64, 3, "A", False, aligned=True),
+        nb.types.Array(nb.int64, 1, "C", False, aligned=True),
+        nb.int64,
+    )
+)
+def three_dimensional_groupby_sum(array, by, n_unique_times):
+    output = np.zeros((n_unique_times, array.shape[1], array.shape[2]))
+
+    for i in range(by.shape[0]):
+        by_i = by[i]
+        array_i = array[i]
+        output[by_i] += array_i
+
+    return output
+
+
+self_outterproduct_mul_scalar_group_by_time_sig = nb.types.Array(
+    nb.types.float64, 3, "C", False, aligned=True
+)(
+    nb.types.Array(nb.types.float64, 2, "F", False, aligned=True),
+    nb.types.Array(nb.types.float64, 1, "C", False, aligned=True),
+    nb.types.Array(nb.types.int64, 1, "C", False, aligned=True),
+    nb.types.int64,
+)
+
+
+@nb.jit(self_outterproduct_mul_scalar_group_by_time_sig)
+def self_outterproduct_mul_scalar_group_by_time(
+    X, p_exp, time_return_inverse, max_time_index
 ):
 
-    weights = pt.vector("weights", dtype="float64")
-    data = pt.matrix("data", dtype="float64")
-    events = pt.vector("event", dtype="float64")
-    n_unique_times = pt.scalar("n_unique_times", dtype="int64")
-    time_return_inverse = pt.vector("time_return_inverse", dtype="int64")
+    n_rows = X.shape[0]
+    n_col = X.shape[1]
 
-    alpha = pt.scalar("alpha", dtype="float64")
-    l1_ratio = pt.scalar("l1_ratio", dtype="float64")
+    c = np.empty((n_col, n_col))
+    output = np.zeros((max_time_index, n_col, n_col))
 
-    l1 = alpha * l1_ratio * pt.abs(weights).sum()
-    l2 = 0.5 * alpha * (1.0 - l1_ratio) * pt.square(weights).sum()
+    for i in range(n_rows):
+        X_i = X[i]
+        p_i = p_exp[i]
+        t_i = time_return_inverse[i]
 
-    o = pt.dot(data, weights)
-    risk_set = _reverse_cumsum_pt(
-        pt.bincount(time_return_inverse, weights=pt.exp(o), minlength=n_unique_times)
-    )[time_return_inverse]
-    loss = -pt.sum(events * (o - pt.log(risk_set))) + l1 + l2
+        for e in range(n_col):
+            for f in range(n_col):
+                c[e, f] = X_i[e] * X_i[f] * p_i
+        output[t_i] = output[t_i] + c
 
-    jacobian = pytensor.gradient.jacobian(loss, weights)
-    hessian = pytensor.gradient.hessian(loss, weights)
-    neg_log_likelihood_loss_jacobian_hessian = pytensor.function(
-        inputs=[
-            weights,
-            data,
-            events,
-            alpha,
-            l1_ratio,
-            n_unique_times,
-            time_return_inverse,
-        ],
-        outputs=[loss, jacobian, hessian],
+    return output
+
+
+def breslow_neg_log_likelihood_loss_jacobian_hessian(
+    weights, X, event, time_return_inverse, n_unique_times, event_counts_at_times
+):
+
+    p = np.dot(X, weights)
+    p_exp = np.exp(p)
+
+    risk_set_at_time = reverse_cumsum(
+        np.bincount(time_return_inverse, weights=p_exp, minlength=n_unique_times)
     )
 
-    return neg_log_likelihood_loss_jacobian_hessian
+    risk_set = risk_set_at_time[time_return_inverse]
+
+    loss = -np.sum(event * (p - np.log(risk_set)))
+
+    XxXb = np.multiply(X, p_exp[:, np.newaxis])
+
+    XxXb_at_Xt_at_time = np.apply_along_axis(
+        lambda a: np.bincount(time_return_inverse, weights=a, minlength=n_unique_times),
+        0,
+        XxXb,
+    )
+
+    del XxXb
+
+    XxXb_at_Xt_at_time_cumsum = np.apply_along_axis(
+        reverse_cumsum, 0, XxXb_at_Xt_at_time
+    )
+
+    del XxXb_at_Xt_at_time
 
 
-breslow_neg_log_likelihood_loss_jacobian_hessian = (
-    get_breslow_neg_log_likelihood_loss_jacobian_hessian_function_pytensor()
-)
+    XxXb_at_Xt_at_index = XxXb_at_Xt_at_time_cumsum[time_return_inverse]
+
+    jacobian = -np.sum(
+        event[:, np.newaxis] * (X - XxXb_at_Xt_at_index / risk_set[:, np.newaxis]),
+        axis=0,
+    )
+
+    del XxXb_at_Xt_at_index, risk_set
+
+    X2xXb_at_time_ = self_outterproduct_mul_scalar_group_by_time(
+        X, p_exp, time_return_inverse, n_unique_times
+    )
+
+    X2Xb_at_Xt_at_time_cumsum_ = np.flip(np.add.accumulate(np.flip(X2xXb_at_time_)))
+
+    del X2xXb_at_time_
+
+    a = X2Xb_at_Xt_at_time_cumsum_ / risk_set_at_time[:, None, None]
+
+    del X2Xb_at_Xt_at_time_cumsum_
+
+    b = (
+        np.matmul(
+            XxXb_at_Xt_at_time_cumsum[:, :, None], XxXb_at_Xt_at_time_cumsum[:, None, :]
+        )
+        / (risk_set_at_time**2)[:, None, None]
+    )
+
+
+    del XxXb_at_Xt_at_time_cumsum,risk_set_at_time
+
+    c = (a - b) * event_counts_at_times[:, None, None]
+
+    del a, b
+    hessian = np.sum(c, axis=0)
+
+    return loss, jacobian, hessian
 
 
 def train_cox_ph_breslow(X, times, events, alpha, l1_ratio, weights, max_iter, tol):
     unique_times, time_return_inverse = np.unique(times, return_inverse=True)
     n_unique_times = len(unique_times)
+    event_counts_at_times = np.bincount(
+        time_return_inverse, weights=events.astype(np.int64)
+    )
 
     last_loss = np.array(np.inf)
 
     half_step = False
 
     for _ in range(max_iter):
-        loss, jacobian, hessian = breslow_neg_log_likelihood_loss_jacobian_hessian(
-            weights, X, events, alpha, l1_ratio, n_unique_times, time_return_inverse
+        (
+            neg_log_likelihood_loss,
+            neg_log_likelihood_jacobian,
+            neg_log_likelihood_hessian,
+        ) = breslow_neg_log_likelihood_loss_jacobian_hessian(
+            weights,
+            X,
+            events,
+            time_return_inverse,
+            n_unique_times,
+            event_counts_at_times,
         )
+        elasticnet_loss, elasticnet_jacobian, elasticnet_hessian = (
+            elasticnet_loss_jacobian_hessian(weights, alpha, l1_ratio)
+        )
+
+        loss = neg_log_likelihood_loss + elasticnet_loss
+        jacobian = neg_log_likelihood_jacobian + elasticnet_jacobian
+        hessian = neg_log_likelihood_hessian + elasticnet_hessian
 
         if abs(last_loss - loss) <= tol:
             break
@@ -83,56 +193,75 @@ def train_cox_ph_breslow(X, times, events, alpha, l1_ratio, weights, max_iter, t
     return weights, loss
 
 
-def get_efron_neg_log_likelihood_loss_jacobian_hessian_function() -> (
-    pytensor.compile.function.types.Function
+def efron_neg_log_likelihood_loss_jacobian_hessian(
+    weights, X, events, l_div_m, time_return_inverse, n_unique_times
 ):
+    p = np.dot(X, weights)
+    p_exp = np.exp(p)
 
-    weights = pt.vector("weights", dtype="float64")
-    data = pt.matrix("data", dtype="float64")
-    l_div_m = pt.vector("l_div_m", dtype="float64")
-    n_unique_times = pt.scalar("n_unique_times", dtype="int64")
-    events = pt.vector("event", dtype="int64")
-    time_return_inverse = pt.vector("time_return_inverse", dtype="int64")
-
-    alpha = pt.scalar("alpha", dtype="float64")
-    l1_ratio = pt.scalar("l1_ratio", dtype="float64")
-
-    l1 = alpha * l1_ratio * pt.abs(weights).sum()
-    l2 = 0.5 * alpha * (1.0 - l1_ratio) * pt.square(weights).sum()
-
-    p = pt.dot(data, weights)
-    p_exp = pt.exp(p)
-
-    set_at_time_indexed_at_time = pt.bincount(
+    total_risk_per_at_time = np.bincount(
         time_return_inverse, weights=p_exp, minlength=n_unique_times
     )
-    set_per_time = set_at_time_indexed_at_time[time_return_inverse]
-    risk_set = _reverse_cumsum_pt(set_at_time_indexed_at_time)[time_return_inverse]
+    total_risk_per_at_index = total_risk_per_at_time[time_return_inverse]
 
-    loss = -pt.sum(events * (p - np.log(risk_set - (l_div_m * set_per_time)))) + l1 + l2
-
-    jacobian = pytensor.gradient.jacobian(loss, weights)
-    hessian = pytensor.gradient.hessian(loss, weights)
-    neg_log_likelihood_loss_jacobian_hessian = pytensor.function(
-        inputs=[
-            weights,
-            data,
-            events,
-            alpha,
-            l1_ratio,
-            l_div_m,
-            n_unique_times,
-            time_return_inverse,
-        ],
-        outputs=[loss, jacobian, hessian],
+    risk_set = reverse_cumsum(total_risk_per_at_time)[time_return_inverse]
+    risk_set_minus_l_div_m_x_total_risk_per_at_index = risk_set - (
+        l_div_m * total_risk_per_at_index
     )
 
-    return neg_log_likelihood_loss_jacobian_hessian
+    loss = -np.sum(
+        events * (p - np.log(risk_set_minus_l_div_m_x_total_risk_per_at_index))
+    )
 
+    XxP = np.multiply(X, p_exp[:, np.newaxis])
+    XxP_per_time = np.apply_along_axis(
+        lambda a: np.bincount(time_return_inverse, weights=a, minlength=n_unique_times),
+        0,
+        XxP,
+    )
+    XxP_per_time_cumsum = np.apply_along_axis(reverse_cumsum, 0, XxP_per_time)
+    XxP_per_time_cumsum_at_index = XxP_per_time_cumsum[time_return_inverse]
 
-efron_neg_log_likelihood_loss_jacobian_hessian = (
-    get_efron_neg_log_likelihood_loss_jacobian_hessian_function()
-)
+    XxP_at_h = XxP_per_time[time_return_inverse]
+    l_div_m_times_XxXb_at_Xh = l_div_m[:, None] * XxP_at_h
+
+    jacobian_numerator = XxP_per_time_cumsum_at_index - l_div_m_times_XxXb_at_Xh
+
+    jacobian = -np.sum(
+        events[:, np.newaxis]
+        * (
+            X
+            - (
+                jacobian_numerator
+                / risk_set_minus_l_div_m_x_total_risk_per_at_index[:, None]
+            )
+        ),
+        axis=0,
+    )
+
+    zjlm_out_zjlm = np.matmul(
+        jacobian_numerator[:, :, np.newaxis], jacobian_numerator[:, np.newaxis, :]
+    )
+    a = zjlm_out_zjlm / (
+        np.square(risk_set_minus_l_div_m_x_total_risk_per_at_index)[:, None, None]
+    )
+
+    XXxP = np.einsum("ij,ik,i->ijk", X, X, p_exp)
+    XXxP_at_time = three_dimensional_groupby_sum(
+        XXxP, time_return_inverse, n_unique_times
+    )
+    XXxP_at_time_cumsum_at_index = np.flip(np.add.accumulate(np.flip(XXxP_at_time)))[
+        time_return_inverse
+    ]
+
+    XXxP_h = XXxP_at_time[time_return_inverse]
+
+    b_numerator = XXxP_at_time_cumsum_at_index - l_div_m[:, None, None] * XXxP_h
+    b = b_numerator / (risk_set_minus_l_div_m_x_total_risk_per_at_index[:, None, None])
+
+    hessian = np.sum(events[:, None, None] * (b - a), axis=0)
+
+    return loss, jacobian, hessian
 
 
 index_per_not_censored_times_nb_signature = nb.types.Array(nb.types.int64, 1, "C")(
@@ -195,134 +324,25 @@ def train_cox_ph_efron(X, times, events, alpha, l1_ratio, weights, max_iter, tol
     half_step = False
 
     for _ in range(max_iter):
-        loss, jacobian, hessian = efron_neg_log_likelihood_loss_jacobian_hessian(
+        (
+            neg_log_likelihood_loss,
+            neg_log_likelihood_jacobian,
+            neg_log_likelihood_hessian,
+        ) = efron_neg_log_likelihood_loss_jacobian_hessian(
             weights,
             X,
             events,
-            alpha,
-            l1_ratio,
             l_div_m,
-            n_unique_times,
             time_return_inverse,
-        )
-
-        if abs(last_loss - loss) <= tol:
-            break
-        elif (loss < last_loss) & (not half_step):
-            last_loss = loss
-            weights = weights - np.dot(np.linalg.inv(hessian), jacobian)
-        elif (loss < last_loss) & half_step:
-            last_loss = loss
-            weights = weights - (0.5 * np.dot(np.linalg.inv(hessian), jacobian))
-        else:
-            if half_step:
-                break
-            else:
-                half_step = True
-
-    return weights, loss
-
-
-def get_stratified_breslow_neg_log_likelihood_loss_jacobian_hessian_function_pytensor() -> (
-    pytensor.compile.function.types.Function
-):
-
-    weights = pt.vector("weights", dtype="float64")
-    data = pt.matrix("data", dtype="float64")
-    n_unique_times = pt.scalar("n_unique_times", dtype="int64")
-    events = pt.vector("events", dtype="int64")
-    time_return_inverse_by_patition = pt.matrix(
-        "time_return_inverse_by_patition", dtype="int64"
-    )  # n_rows X n_strata matrix
-    partition_mask = pt.matrix(
-        "partition_mask", dtype="int64"
-    )  # n_rows X n_strata matrix
-
-    alpha = pt.scalar("alpha", dtype="float64")
-    l1_ratio = pt.scalar("l1_ratio", dtype="float64")
-
-    l1 = alpha * l1_ratio * pt.abs(weights).sum()
-    l2 = 0.5 * alpha * (1.0 - l1_ratio) * pt.square(weights).sum()
-
-    risk = pt.dot(data, weights)
-
-    def breslow_loss_per_strata(
-        time_return_inverse_pt, partition_mask, events, risk, n_unique_times
-    ):
-        risk_masked = risk * partition_mask
-        risk_exp_masked = pt.exp(risk) * partition_mask
-
-        risk_set = _reverse_cumsum_pt(
-            pt.bincount(
-                time_return_inverse_pt,
-                weights=risk_exp_masked,
-                minlength=n_unique_times,
-            )
-        )[time_return_inverse_pt]
-
-        return pt.sum(events * (risk_masked - pt.log(risk_set)))
-
-    loss_per_parition, _ = pytensor.map(
-        fn=breslow_loss_per_strata,
-        sequences=[time_return_inverse_by_patition.T, partition_mask.T],
-        non_sequences=[events, risk, n_unique_times],
-    )
-
-    loss = -pt.sum(loss_per_parition) + l1 + l2
-
-    jacobian = pytensor.gradient.jacobian(loss, weights)
-    hessian = pytensor.gradient.hessian(loss, weights)
-
-    stratified_breslow_neg_log_likelihood_loss_jacobian_hessian = pytensor.function(
-        [
-            weights,
-            data,
-            events,
-            alpha,
-            l1_ratio,
-            time_return_inverse_by_patition,
-            partition_mask,
             n_unique_times,
-        ],
-        outputs=[loss, jacobian, hessian],
-    )
-    return stratified_breslow_neg_log_likelihood_loss_jacobian_hessian
-
-
-stratified_breslow_neg_log_likelihood_loss_jacobian_hessian = (
-    get_stratified_breslow_neg_log_likelihood_loss_jacobian_hessian_function_pytensor()
-)
-
-
-def train_cox_ph_stratified_breslow(
-    X, times, events, strata, alpha, l1_ratio, weights, max_iter, tol
-):
-    """A rather experimental implmention for stratifed breslow cox. Uses autograd to directly get the jacobian, hessian; instead of adding the jacobian, hessian for each strata. The results are diffrent from the traditional implmention."""
-    _, stata_index = np.unique(strata, return_inverse=True)
-    stata_index_unique = np.unique(stata_index)
-    partition_mask = stata_index == stata_index_unique[:, None]
-
-    unique_times, time_return_inverse = np.unique(times, return_inverse=True)
-    time_return_inverse_by_patition = time_return_inverse[:, None] * partition_mask.T
-
-    n_unique_times = len(unique_times)
-    last_loss = np.array(np.inf)
-    half_step = False
-
-    for _ in range(max_iter):
-        loss, jacobian, hessian = (
-            stratified_breslow_neg_log_likelihood_loss_jacobian_hessian(
-                weights,
-                X,
-                events,
-                alpha,
-                l1_ratio,
-                time_return_inverse_by_patition,
-                partition_mask,
-                n_unique_times,
-                time_return_inverse,
-            )
         )
+        elasticnet_loss, elasticnet_jacobian, elasticnet_hessian = (
+            elasticnet_loss_jacobian_hessian(weights, alpha, l1_ratio)
+        )
+
+        loss = neg_log_likelihood_loss + elasticnet_loss
+        jacobian = neg_log_likelihood_jacobian + elasticnet_jacobian
+        hessian = neg_log_likelihood_hessian + elasticnet_hessian
 
         if abs(last_loss - loss) <= tol:
             break

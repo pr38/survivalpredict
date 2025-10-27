@@ -1,5 +1,5 @@
-import numpy as np
 import numba as nb
+import numpy as np
 
 get_kaplan_meier_survival_curve_from_time_as_int_signature_ = nb.types.Array(
     nb.types.float64, 1, "C", False, aligned=True
