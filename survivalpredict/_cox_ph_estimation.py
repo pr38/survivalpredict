@@ -21,36 +21,18 @@ def reverse_cumsum(a):
     return np.flip(np.cumsum(np.flip(a)))
 
 
-@nb.njit(
-    nb.types.Array(nb.float64, 3, "A", False, aligned=True)(
-        nb.types.Array(nb.float64, 3, "A", False, aligned=True),
-        nb.types.Array(nb.int64, 1, "C", False, aligned=True),
-        nb.int64,
-    )
-)
-def three_dimensional_groupby_sum(array, by, n_unique_times):
-    output = np.zeros((n_unique_times, array.shape[1], array.shape[2]))
-
-    for i in range(by.shape[0]):
-        by_i = by[i]
-        array_i = array[i]
-        output[by_i] += array_i
-
-    return output
-
-
-self_outterproduct_mul_scalar_group_by_time_sig = nb.types.Array(
+self_outterproduct_mul_groupby_time_sig = nb.types.Array(
     nb.types.float64, 3, "C", False, aligned=True
 )(
-    nb.types.Array(nb.types.float64, 2, "F", False, aligned=True),
+    nb.types.Array(nb.types.float64, 2, "A", False, aligned=True),
     nb.types.Array(nb.types.float64, 1, "C", False, aligned=True),
     nb.types.Array(nb.types.int64, 1, "C", False, aligned=True),
     nb.types.int64,
 )
 
 
-@nb.jit(self_outterproduct_mul_scalar_group_by_time_sig)
-def self_outterproduct_mul_scalar_group_by_time(
+@nb.jit(self_outterproduct_mul_groupby_time_sig)
+def self_outterproduct_mul_groupby_time(
     X, p_exp, time_return_inverse, max_time_index
 ):
 
@@ -104,7 +86,6 @@ def breslow_neg_log_likelihood_loss_jacobian_hessian(
 
     del XxXb_at_Xt_at_time
 
-
     XxXb_at_Xt_at_index = XxXb_at_Xt_at_time_cumsum[time_return_inverse]
 
     jacobian = -np.sum(
@@ -114,7 +95,7 @@ def breslow_neg_log_likelihood_loss_jacobian_hessian(
 
     del XxXb_at_Xt_at_index, risk_set
 
-    X2xXb_at_time_ = self_outterproduct_mul_scalar_group_by_time(
+    X2xXb_at_time_ = self_outterproduct_mul_groupby_time(
         X, p_exp, time_return_inverse, n_unique_times
     )
 
@@ -133,8 +114,7 @@ def breslow_neg_log_likelihood_loss_jacobian_hessian(
         / (risk_set_at_time**2)[:, None, None]
     )
 
-
-    del XxXb_at_Xt_at_time_cumsum,risk_set_at_time
+    del XxXb_at_Xt_at_time_cumsum, risk_set_at_time
 
     c = (a - b) * event_counts_at_times[:, None, None]
 
@@ -193,9 +173,92 @@ def train_cox_ph_breslow(X, times, events, alpha, l1_ratio, weights, max_iter, t
     return weights, loss
 
 
+get_first_half_of_eforn_hessian_sig = nb.types.Array(
+    nb.types.float64, 2, "C", False, aligned=True
+)(
+    nb.types.Array(nb.types.float64, 2, "C", False, aligned=True),
+    nb.types.Array(nb.types.float64, 1, "C", False, aligned=True),
+    nb.types.Array(nb.types.bool_, 1, "C", False, aligned=True),
+)
+
+
+@nb.njit(get_first_half_of_eforn_hessian_sig)
+def get_first_half_of_efron_hessian(
+    jacobian_numerator, risk_set_minus_l_div_m_x_total_risk, events
+):
+    n_rows = jacobian_numerator.shape[0]
+    n_col = jacobian_numerator.shape[1]
+
+    first_half_of_efron_hessian_sum = np.zeros((n_col, n_col))
+
+    rs = np.square(risk_set_minus_l_div_m_x_total_risk)
+
+    for i in range(n_rows):
+        jn_i = jacobian_numerator[i]
+        rs_i = rs[i]
+        e_i = events[i]
+
+        if e_i:
+            for e in range(n_col):
+                for f in range(n_col):
+                    first_half_of_efron_hessian_sum[e, f] += (jn_i[e] * jn_i[f]) / (
+                        rs_i
+                    )
+
+    return first_half_of_efron_hessian_sum
+
+
+get_second_half_of_efron_hessian_signature = nb.types.Array(
+    nb.float64, 2, "C", False, aligned=True
+)(
+    nb.types.Array(nb.types.bool_, 1, "C", False, aligned=True),
+    nb.types.Array(nb.types.int64, 1, "C", False, aligned=True),
+    nb.types.Array(nb.types.float64, 3, "C", False, aligned=True),
+    nb.types.Array(nb.types.float64, 3, "A", False, aligned=True),
+    nb.types.Array(nb.types.float64, 1, "C", False, aligned=True),
+    nb.types.Array(nb.types.float64, 1, "C", False, aligned=True),
+)
+
+
+@nb.njit(get_second_half_of_efron_hessian_signature)
+def get_second_half_of_efron_hessian(
+    events,
+    time_return_inverse,
+    X2xXb_at_time,
+    X2Xb_at_Xt_at_time_cumsum,
+    l_div_m,
+    risk_set_minus_l_div_m_x_total_risk,
+):
+
+    n_col = X2xXb_at_time.shape[1]
+    n_rows = events.shape[0]
+
+    second_half_of_eforn_hessian_sum = np.zeros((n_col, n_col))
+
+    for i in range(n_rows):
+        e_i = events[i]
+
+        if e_i:
+            t_i = time_return_inverse[i]
+            l_div_m_i = l_div_m[i]
+            X2xXb_at_time_i = X2xXb_at_time[t_i]
+            X2Xb_at_Xt_at_time_cumsum_i = X2Xb_at_Xt_at_time_cumsum[t_i]
+            rsl_div_m_i = risk_set_minus_l_div_m_x_total_risk[i]
+
+            for e in range(n_col):
+                for f in range(n_col):
+                    second_half_of_eforn_hessian_sum[e, f] += (
+                        X2Xb_at_Xt_at_time_cumsum_i[e, f]
+                        - l_div_m_i * X2xXb_at_time_i[e, f]
+                    ) / rsl_div_m_i
+
+    return second_half_of_eforn_hessian_sum
+
+
 def efron_neg_log_likelihood_loss_jacobian_hessian(
     weights, X, events, l_div_m, time_return_inverse, n_unique_times
 ):
+
     p = np.dot(X, weights)
     p_exp = np.exp(p)
 
@@ -209,9 +272,13 @@ def efron_neg_log_likelihood_loss_jacobian_hessian(
         l_div_m * total_risk_per_at_index
     )
 
+    del risk_set
+
     loss = -np.sum(
         events * (p - np.log(risk_set_minus_l_div_m_x_total_risk_per_at_index))
     )
+
+    del p, total_risk_per_at_index
 
     XxP = np.multiply(X, p_exp[:, np.newaxis])
     XxP_per_time = np.apply_along_axis(
@@ -219,13 +286,20 @@ def efron_neg_log_likelihood_loss_jacobian_hessian(
         0,
         XxP,
     )
+
+    del XxP
+
     XxP_per_time_cumsum = np.apply_along_axis(reverse_cumsum, 0, XxP_per_time)
     XxP_per_time_cumsum_at_index = XxP_per_time_cumsum[time_return_inverse]
 
     XxP_at_h = XxP_per_time[time_return_inverse]
     l_div_m_times_XxXb_at_Xh = l_div_m[:, None] * XxP_at_h
 
+    del XxP_at_h
+
     jacobian_numerator = XxP_per_time_cumsum_at_index - l_div_m_times_XxXb_at_Xh
+
+    del XxP_per_time_cumsum_at_index, l_div_m_times_XxXb_at_Xh
 
     jacobian = -np.sum(
         events[:, np.newaxis]
@@ -239,27 +313,30 @@ def efron_neg_log_likelihood_loss_jacobian_hessian(
         axis=0,
     )
 
-    zjlm_out_zjlm = np.matmul(
-        jacobian_numerator[:, :, np.newaxis], jacobian_numerator[:, np.newaxis, :]
-    )
-    a = zjlm_out_zjlm / (
-        np.square(risk_set_minus_l_div_m_x_total_risk_per_at_index)[:, None, None]
+    first_half_of_efron_hessian = get_first_half_of_efron_hessian(
+        jacobian_numerator, risk_set_minus_l_div_m_x_total_risk_per_at_index, events
     )
 
-    XXxP = np.einsum("ij,ik,i->ijk", X, X, p_exp)
-    XXxP_at_time = three_dimensional_groupby_sum(
-        XXxP, time_return_inverse, n_unique_times
+    X2xXb_at_time = self_outterproduct_mul_groupby_time(
+        X, p_exp, time_return_inverse, n_unique_times
     )
-    XXxP_at_time_cumsum_at_index = np.flip(np.add.accumulate(np.flip(XXxP_at_time)))[
-        time_return_inverse
-    ]
 
-    XXxP_h = XXxP_at_time[time_return_inverse]
+    del p_exp
 
-    b_numerator = XXxP_at_time_cumsum_at_index - l_div_m[:, None, None] * XXxP_h
-    b = b_numerator / (risk_set_minus_l_div_m_x_total_risk_per_at_index[:, None, None])
+    X2Xb_at_Xt_at_time_cumsum = np.flip(np.add.accumulate(np.flip(X2xXb_at_time)))
 
-    hessian = np.sum(events[:, None, None] * (b - a), axis=0)
+    second_half_of_efron_hessian = get_second_half_of_efron_hessian(
+        events,
+        time_return_inverse,
+        X2xXb_at_time,
+        X2Xb_at_Xt_at_time_cumsum,
+        l_div_m,
+        risk_set_minus_l_div_m_x_total_risk_per_at_index,
+    )
+
+    del risk_set_minus_l_div_m_x_total_risk_per_at_index, X2xXb_at_time, X2Xb_at_Xt_at_time_cumsum
+
+    hessian = -(first_half_of_efron_hessian - second_half_of_efron_hessian)
 
     return loss, jacobian, hessian
 
