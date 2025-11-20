@@ -26,6 +26,9 @@ def _brier_scores_ipcw(
         times_for_ipcw = times
         events_for_ipcw = events
 
+    if predictions.shape[1] > max_time:
+        predictions = predictions[:,max_time]
+
     times_index = times - 1
 
     n_row = times.shape[0]
@@ -178,6 +181,10 @@ def _brier_scores_administrative(
 ):
     if max_time is None:
         max_time = int(times.max())
+
+    if predictions.shape[1] > max_time:
+        predictions = predictions[:,max_time]
+
 
     unique_times = np.arange(1, max_time + 1)
 
