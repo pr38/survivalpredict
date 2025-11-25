@@ -8,6 +8,14 @@ from sklearn.utils.validation import check_is_fitted
 
 from ._base_hazard import _get_breslow_base_hazard
 from ._cox_ph_estimation import train_cox_ph_breslow, train_cox_ph_efron
+from ._discrete_time_ph_estimation import (
+    train_parametric_discrete_time_ph_model,
+    predict_parametric_discrete_time_ph_model,
+    _weibull_pdf,
+    _chen_pdf,
+    get_parametric_discrete_time_ph_model,
+    _scale_times
+)
 from .utils import validate_survival_data
 
 
@@ -118,3 +126,88 @@ class CoxProportionalHazard(SurvivalPredictBase):
         check_is_fitted(self)
 
         return np.exp(np.dot(X, self.coef_))
+
+
+class ParametricDiscreteTimePH(SurvivalPredictBase):
+    _parameter_constraints: dict = {
+        "distribution": [StrOptions({"chen", "weibull"})],
+    }
+
+    def __init__(
+        self,
+        *,
+        distribution: Optional[Literal["chen", "weibull"]] = "chen",
+    ):
+        self.distribution = distribution
+
+    def _get_distribution_function(self):
+        if self.distribution == "chen":
+            return _chen_pdf
+        elif self.distribution == "weibull":
+            return _weibull_pdf
+        else:
+            raise ValueError(f"{self.distribution} distribution is not yet implemented")
+
+    @_fit_context(prefer_skip_nested_validation=True)
+    def fit(self, X, times, events, weights=None, check_input=True):
+
+        if check_input:
+            X, times, events = validate_survival_data(X, times, events)
+
+        self._max_time_observed = np.max(times)
+
+        base_hazard_pdf_callable = self._get_distribution_function()
+
+        coefs, a, b = train_parametric_discrete_time_ph_model(
+            X, times, events, base_hazard_pdf_callable
+        )
+
+        self.coef_ = coefs
+        self.distribution_params = (a, b)
+
+        self.is_fitted_ = True
+        return self
+
+    def predict(self, X, max_time: Optional[int] = None):
+        check_is_fitted(self)
+
+        if max_time is None:
+            max_time = self._max_time_observed
+        elif type(max_time) != int:
+            raise ValueError("max_time must be an integer")
+
+        base_hazard_pdf_callable = self._get_distribution_function()
+
+        return predict_parametric_discrete_time_ph_model(
+            X,
+            self.coef_,
+            self.distribution_params[0],
+            self.distribution_params[1],
+            max_time,
+            base_hazard_pdf_callable,
+        )
+
+    def predict_risk(self, X):
+        check_is_fitted(self)
+
+        return np.exp(np.dot(X, self.coef_))
+    
+    def get_base_hazard(self,max_time: Optional[int] = None):
+
+        if max_time is None:
+            max_time = self._max_time_observed
+
+        times_of_intrest = np.arange(1, max_time + 1)
+        times_of_intrest_norm = _scale_times(times_of_intrest, max_time)
+
+
+        base_hazard_pdf_callable = self._get_distribution_function()
+        return base_hazard_pdf_callable(times_of_intrest_norm, self.distribution_params[0],self.distribution_params[1])
+    
+    def get_pymc_model(self,X, times, events):
+
+        base_hazard_pdf_callable = self._get_distribution_function()
+
+        max_time = times.max()
+
+        return get_parametric_discrete_time_ph_model(X,times,events,base_hazard_pdf_callable,max_time)
