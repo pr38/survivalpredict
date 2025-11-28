@@ -158,12 +158,12 @@ class ParametricDiscreteTimePH(SurvivalPredictBase):
 
         base_hazard_pdf_callable = self._get_distribution_function()
 
-        coefs, a, b = train_parametric_discrete_time_ph_model(
+        coefs, base_hazard_prams = train_parametric_discrete_time_ph_model(
             X, times, events, base_hazard_pdf_callable
         )
 
         self.coef_ = coefs
-        self.distribution_params = (a, b)
+        self.base_hazard_prams_ = base_hazard_prams
 
         self.is_fitted_ = True
         return self
@@ -181,8 +181,7 @@ class ParametricDiscreteTimePH(SurvivalPredictBase):
         return predict_parametric_discrete_time_ph_model(
             X,
             self.coef_,
-            self.distribution_params[0],
-            self.distribution_params[1],
+            self.base_hazard_prams_,
             max_time,
             base_hazard_pdf_callable,
         )
@@ -202,7 +201,7 @@ class ParametricDiscreteTimePH(SurvivalPredictBase):
 
 
         base_hazard_pdf_callable = self._get_distribution_function()
-        return base_hazard_pdf_callable(times_of_intrest_norm, self.distribution_params[0],self.distribution_params[1])
+        return base_hazard_pdf_callable(times_of_intrest_norm, self.base_hazard_prams_)
     
     def get_pymc_model(self,X, times, events):
 
