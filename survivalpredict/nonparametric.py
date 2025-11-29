@@ -10,7 +10,7 @@ get_kaplan_meier_survival_curve_from_time_as_int_signature_ = nb.types.Array(
 )
 
 
-@nb.njit(get_kaplan_meier_survival_curve_from_time_as_int_signature_)
+@nb.njit(get_kaplan_meier_survival_curve_from_time_as_int_signature_, cache=True)
 def get_kaplan_meier_survival_curve_from_time_as_int_(
     events: np.ndarray,
     times: np.ndarray,

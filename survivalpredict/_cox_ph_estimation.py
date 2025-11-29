@@ -31,10 +31,8 @@ self_outterproduct_mul_groupby_time_sig = nb.types.Array(
 )
 
 
-@nb.jit(self_outterproduct_mul_groupby_time_sig)
-def self_outterproduct_mul_groupby_time(
-    X, p_exp, time_return_inverse, max_time_index
-):
+@nb.jit(self_outterproduct_mul_groupby_time_sig, cache=True)
+def self_outterproduct_mul_groupby_time(X, p_exp, time_return_inverse, max_time_index):
 
     n_rows = X.shape[0]
     n_col = X.shape[1]
@@ -182,7 +180,7 @@ get_first_half_of_eforn_hessian_sig = nb.types.Array(
 )
 
 
-@nb.njit(get_first_half_of_eforn_hessian_sig)
+@nb.njit(get_first_half_of_eforn_hessian_sig, cache=True)
 def get_first_half_of_efron_hessian(
     jacobian_numerator, risk_set_minus_l_div_m_x_total_risk, events
 ):
@@ -220,7 +218,7 @@ get_second_half_of_efron_hessian_signature = nb.types.Array(
 )
 
 
-@nb.njit(get_second_half_of_efron_hessian_signature)
+@nb.njit(get_second_half_of_efron_hessian_signature, cache=True)
 def get_second_half_of_efron_hessian(
     events,
     time_return_inverse,
@@ -334,7 +332,11 @@ def efron_neg_log_likelihood_loss_jacobian_hessian(
         risk_set_minus_l_div_m_x_total_risk_per_at_index,
     )
 
-    del risk_set_minus_l_div_m_x_total_risk_per_at_index, X2xXb_at_time, X2Xb_at_Xt_at_time_cumsum
+    del (
+        risk_set_minus_l_div_m_x_total_risk_per_at_index,
+        X2xXb_at_time,
+        X2Xb_at_Xt_at_time_cumsum,
+    )
 
     hessian = -(first_half_of_efron_hessian - second_half_of_efron_hessian)
 
@@ -346,7 +348,7 @@ index_per_not_censored_times_nb_signature = nb.types.Array(nb.types.int64, 1, "C
 )
 
 
-@nb.njit(index_per_not_censored_times_nb_signature)
+@nb.njit(index_per_not_censored_times_nb_signature, cache=True)
 def get_index_per_not_censored_times(time, events):
     last_time = np.inf
     current_index = 0
