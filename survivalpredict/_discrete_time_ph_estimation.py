@@ -1,25 +1,47 @@
 import numpy as np
-import pytensor.tensor as pt
 import pymc as pm
 import pymc_extras as pmx
+import pytensor.tensor as pt
 
 
 def _scale_times(times, time_max):
     return times / time_max
 
 
-def _weibull_pdf(x, prams):
-    return (prams[0] / prams[1]) * (x / prams[1]) ** (prams[0] - 1)
+def _weibull_pdf(x, params):
+    return (params[0] / params[1]) * (x / params[1]) ** (params[0] - 1)
 
 
-def _chen_pdf(x, prams):
-    e_x_k = np.exp(x ** prams[1])
+def _chen_pdf(x, params):
+    e_x_k = np.exp(x ** params[1])
     return (
-        prams[0]
-        * prams[1]
-        * x ** (prams[1] - 1)
+        params[0]
+        * params[1]
+        * x ** (params[1] - 1)
         * e_x_k
-        * np.exp(prams[0] - (prams[0] * e_x_k))
+        * np.exp(params[0] - (params[0] * e_x_k))
+    )
+
+
+def _log_normal_pdf(x, params):
+    return (
+        1
+        / (x * params[0] * np.sqrt(2 * params[1]))
+        * np.exp(-((np.log(x) - params[1]) ** 2) / (2 * params[0] ** 2))
+    )
+
+
+def _log_logistic_pdf(x, params):
+    return ((params[1] / params[0]) * (x / params[0]) ** (params[1] - 1)) / (
+        (1 + (x / params[0]) ** params[1]) ** 2
+    )
+
+
+def _gompertz_pdf(x, params):
+    return (
+        params[0]
+        * params[1]
+        * np.exp(params[0] + params[1] * x - (params[0] * np.exp(params[1] * x)))
     )
 
 
@@ -28,7 +50,7 @@ def get_parametric_discrete_time_ph_model(
     times,
     events,
     base_hazard_pdf_callable,
-    n_base_hazard_prams,
+    n_base_hazard_params,
     max_time=None,
     labes_names=None,
 ):
@@ -47,14 +69,14 @@ def get_parametric_discrete_time_ph_model(
     )
 
     row_ids = np.arange(X.shape[0])
-    base_hazard_prams_ids = range(n_base_hazard_prams)
+    base_hazard_params_ids = range(n_base_hazard_params)
 
     with pm.Model(
         coords={
             "labes": labes_names,
             "times": times_of_intrest,
             "row_ids": row_ids,
-            "base_hazard_prams_ids": base_hazard_prams_ids,
+            "base_hazard_params_ids": base_hazard_params_ids,
         }
     ) as model:
 
@@ -62,12 +84,12 @@ def get_parametric_discrete_time_ph_model(
 
         coefs = pm.Normal("coefs", sigma=50, dims="labes")
 
-        base_hazard_prams = pm.Exponential(
-            "base_hazard_prams", 5, dims="base_hazard_prams_ids"
+        base_hazard_params = pm.Exponential(
+            "base_hazard_params", 5, dims="base_hazard_params_ids"
         )
 
         base_hazards = base_hazard_pdf_callable(
-            times_of_intrest_norm, base_hazard_prams
+            times_of_intrest_norm, base_hazard_params
         )
 
         relative_risk = pt.exp(pt.dot(data, coefs))
@@ -79,8 +101,8 @@ def get_parametric_discrete_time_ph_model(
 
         def censored_bernoulli_logp(value, p, noncensored_mask):
             dis = pm.Bernoulli.logp(value, p=p)
-            # return dis.flatten()[noncensored_mask.flatten()]
-            return dis * noncensored_mask
+            return dis.flatten()[noncensored_mask.flatten()]
+            #return dis * noncensored_mask
 
         y = pm.DensityDist(
             "y",
@@ -94,11 +116,11 @@ def get_parametric_discrete_time_ph_model(
 
 
 def train_parametric_discrete_time_ph_model(
-    X, times, events, hazard_pdf_callable, n_base_hazard_prams
+    X, times, events, hazard_pdf_callable, n_base_hazard_params
 ) -> tuple[np.array, np.array]:
 
     model = get_parametric_discrete_time_ph_model(
-        X, times, events, hazard_pdf_callable, n_base_hazard_prams
+        X, times, events, hazard_pdf_callable, n_base_hazard_params
     )
 
     with model:
@@ -108,19 +130,19 @@ def train_parametric_discrete_time_ph_model(
         )
 
     coefs = mle.posterior["coefs"].values.flatten()
-    base_hazard_prams = mle.posterior["base_hazard_prams"].values.flatten()
+    base_hazard_params = mle.posterior["base_hazard_params"].values.flatten()
 
-    return coefs, base_hazard_prams
+    return coefs, base_hazard_params
 
 
 def predict_parametric_discrete_time_ph_model(
-    X, coefs, base_hazard_prams, max_time, base_hazard_pdf_callable
+    X, coefs, base_hazard_params, max_time, base_hazard_pdf_callable
 ):
 
     times_of_intrest = np.arange(1, max_time + 1)
     times_of_intrest_norm = _scale_times(times_of_intrest, max_time)
 
-    base_hazards = base_hazard_pdf_callable(times_of_intrest_norm, base_hazard_prams)
+    base_hazards = base_hazard_pdf_callable(times_of_intrest_norm, base_hazard_params)
 
     relative_risk = np.exp(np.dot(X, coefs))
 

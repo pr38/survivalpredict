@@ -9,13 +9,10 @@ from sklearn.utils.validation import check_is_fitted
 from ._base_hazard import _get_breslow_base_hazard
 from ._cox_ph_estimation import train_cox_ph_breslow, train_cox_ph_efron
 from ._discrete_time_ph_estimation import (
-    train_parametric_discrete_time_ph_model,
+    _chen_pdf, _gompertz_pdf, _log_logistic_pdf, _log_normal_pdf, _scale_times,
+    _weibull_pdf, get_parametric_discrete_time_ph_model,
     predict_parametric_discrete_time_ph_model,
-    _weibull_pdf,
-    _chen_pdf,
-    get_parametric_discrete_time_ph_model,
-    _scale_times,
-)
+    train_parametric_discrete_time_ph_model)
 from .utils import validate_survival_data
 
 
@@ -130,13 +127,17 @@ class CoxProportionalHazard(SurvivalPredictBase):
 
 class ParametricDiscreteTimePH(SurvivalPredictBase):
     _parameter_constraints: dict = {
-        "distribution": [StrOptions({"chen", "weibull"})],
+        "distribution": [
+            StrOptions({"chen", "weibull", "log_normal", "log_logistic", "gompertz"})
+        ],
     }
 
     def __init__(
         self,
         *,
-        distribution: Optional[Literal["chen", "weibull"]] = "chen",
+        distribution: Optional[
+            Literal["chen", "weibull", "log_normal", "log_logistic", "gompertz"]
+        ] = "chen",
     ):
         self.distribution = distribution
 
@@ -145,6 +146,12 @@ class ParametricDiscreteTimePH(SurvivalPredictBase):
             return _chen_pdf, 2
         elif self.distribution == "weibull":
             return _weibull_pdf, 2
+        elif self.distribution == "log_normal":
+            return _log_normal_pdf, 2
+        elif self.distribution == "log_logistic":
+            return _log_logistic_pdf, 2
+        elif self.distribution == "gompertz":
+            return _gompertz_pdf, 2
         else:
             raise ValueError(f"{self.distribution} distribution is not yet implemented")
 
