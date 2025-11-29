@@ -14,7 +14,7 @@ from ._discrete_time_ph_estimation import (
     _weibull_pdf,
     _chen_pdf,
     get_parametric_discrete_time_ph_model,
-    _scale_times
+    _scale_times,
 )
 from .utils import validate_survival_data
 
@@ -140,11 +140,11 @@ class ParametricDiscreteTimePH(SurvivalPredictBase):
     ):
         self.distribution = distribution
 
-    def _get_distribution_function(self):
+    def _get_distribution_function_and_n_prams(self):
         if self.distribution == "chen":
-            return _chen_pdf
+            return _chen_pdf, 2
         elif self.distribution == "weibull":
-            return _weibull_pdf
+            return _weibull_pdf, 2
         else:
             raise ValueError(f"{self.distribution} distribution is not yet implemented")
 
@@ -156,10 +156,12 @@ class ParametricDiscreteTimePH(SurvivalPredictBase):
 
         self._max_time_observed = np.max(times)
 
-        base_hazard_pdf_callable = self._get_distribution_function()
+        base_hazard_pdf_callable, n_base_hazard_prams = (
+            self._get_distribution_function_and_n_prams()
+        )
 
         coefs, base_hazard_prams = train_parametric_discrete_time_ph_model(
-            X, times, events, base_hazard_pdf_callable
+            X, times, events, base_hazard_pdf_callable, n_base_hazard_prams
         )
 
         self.coef_ = coefs
@@ -176,7 +178,7 @@ class ParametricDiscreteTimePH(SurvivalPredictBase):
         elif type(max_time) != int:
             raise ValueError("max_time must be an integer")
 
-        base_hazard_pdf_callable = self._get_distribution_function()
+        base_hazard_pdf_callable, _ = self._get_distribution_function_and_n_prams()
 
         return predict_parametric_discrete_time_ph_model(
             X,
@@ -190,8 +192,8 @@ class ParametricDiscreteTimePH(SurvivalPredictBase):
         check_is_fitted(self)
 
         return np.exp(np.dot(X, self.coef_))
-    
-    def get_base_hazard(self,max_time: Optional[int] = None):
+
+    def get_base_hazard(self, max_time: Optional[int] = None):
 
         if max_time is None:
             max_time = self._max_time_observed
@@ -199,14 +201,17 @@ class ParametricDiscreteTimePH(SurvivalPredictBase):
         times_of_intrest = np.arange(1, max_time + 1)
         times_of_intrest_norm = _scale_times(times_of_intrest, max_time)
 
-
-        base_hazard_pdf_callable = self._get_distribution_function()
+        base_hazard_pdf_callable, _ = self._get_distribution_function_and_n_prams()
         return base_hazard_pdf_callable(times_of_intrest_norm, self.base_hazard_prams_)
-    
-    def get_pymc_model(self,X, times, events):
 
-        base_hazard_pdf_callable = self._get_distribution_function()
+    def get_pymc_model(self, X, times, events):
+
+        base_hazard_pdf_callable, n_base_hazard_prams = (
+            self._get_distribution_function_and_n_prams()
+        )
 
         max_time = times.max()
 
-        return get_parametric_discrete_time_ph_model(X,times,events,base_hazard_pdf_callable,max_time)
+        return get_parametric_discrete_time_ph_model(
+            X, times, events, base_hazard_pdf_callable, max_time, n_base_hazard_prams
+        )
