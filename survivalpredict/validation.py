@@ -12,7 +12,7 @@ from .metrics import (
     _integrated_brier_score_administrative,
     _integrated_brier_score_ipcw,
 )
-from .utils import validate_survival_data
+from .utils import validate_survival_data, _as_int_np_array
 
 __all__ = ["sur_cross_val_score", "sur_cross_validate"]
 
@@ -47,6 +47,7 @@ def _sur_fit_and_score(
     return_parameters: Optional[bool],
     return_n_test_samples: Optional[bool],
     method: Optional[Union[str, Callable]],
+    strata: Optional[np.array] = None,
     brier_score_max_time: Optional[int] = None,
     brier_score_average_by_time: Optional[bool] = False,
     error_score: numbers.Real | Literal["raise"] = "raise",
@@ -66,12 +67,25 @@ def _sur_fit_and_score(
     events_train = events[train]
     events_test = events[test]
 
+    has_strata = strata is not None
+
+    if has_strata:
+        strata_train = strata[train]
+        strata_test = strata[test]
+    else:
+        strata_train = None
+        strata_test = None
+
     if parameters:
         estimator = estimator.set_params(**clone(parameters, safe=False))
 
     try:
-
-        estimator.fit(X_train, times_train, events_train, **fit_params)
+        if has_strata:
+            estimator.fit(
+                X_train, times_train, events_train, strata=strata_train, **fit_params
+            )
+        else:
+            estimator.fit(X_train, times_train, events_train, **fit_params)
         fit_time = time.time() - start_time
 
     except:
@@ -98,7 +112,12 @@ def _sur_fit_and_score(
                 train_predictions = method(estimator, X_train)
 
         elif issubclass(type(estimator), SurvivalPredictBase):
-            predictions = estimator.predict(X_test, max_time=brier_score_max_time)
+            if has_strata:
+                predictions = estimator.predict(
+                    X_test, max_time=brier_score_max_time, strata=strata_test
+                )
+            else:
+                predictions = estimator.predict(X_test, max_time=brier_score_max_time)
 
             if return_train_score:
                 train_predictions = estimator.predict(
@@ -181,6 +200,7 @@ def sur_cross_validate(
     times: np.ndarray,
     events: np.ndarray,
     *,
+    strata: Optional[np.ndarray] = None,
     groups=None,
     scoring: Optional[
         Literal["integrated_brier_score_administrative", "integrated_brier_score_ipcw"]
@@ -210,6 +230,9 @@ def sur_cross_validate(
         raise ValueError("return_estimator should be boolian")
 
     X, times, events = validate_survival_data(X, times, events)
+
+    if strata is not None:
+        strata = _as_int_np_array(strata)
 
     if scoring == None:
         scoring = "integrated_brier_score_administrative"
@@ -251,6 +274,7 @@ def sur_cross_validate(
             brier_score_max_time=brier_score_max_time,
             brier_score_average_by_time=brier_score_average_by_time,
             error_score=error_score,
+            strata=strata,
         )
         for train, test in indices
     )
@@ -276,6 +300,7 @@ def sur_cross_val_score(
     error_score=np.nan,
     brier_score_max_time: Optional[int] = None,
     brier_score_average_by_time: Optional[bool] = True,
+    strata: Optional[np.array] = None,
 ):
 
     cv_result = sur_cross_validate(
@@ -293,6 +318,7 @@ def sur_cross_val_score(
         error_score=error_score,
         brier_score_max_time=brier_score_max_time,
         brier_score_average_by_time=brier_score_average_by_time,
+        strata=strata,
     )
 
     return cv_result["test_scores"]

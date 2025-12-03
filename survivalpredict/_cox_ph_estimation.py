@@ -1,6 +1,8 @@
 import numba as nb
 import numpy as np
 
+from ._stratification import split_and_preprocess_data_by_strata
+
 
 def elasticnet_loss_jacobian_hessian(weights, alpha, l1_ratio):
     l1 = alpha * l1_ratio * np.abs(weights).sum()
@@ -122,30 +124,49 @@ def breslow_neg_log_likelihood_loss_jacobian_hessian(
     return loss, jacobian, hessian
 
 
-def train_cox_ph_breslow(X, times, events, alpha, l1_ratio, weights, max_iter, tol):
-    unique_times, time_return_inverse = np.unique(times, return_inverse=True)
-    n_unique_times = len(unique_times)
-    event_counts_at_times = np.bincount(
-        time_return_inverse, weights=events.astype(np.int64)
-    )
+def train_cox_ph_breslow(
+    X_strata,
+    events_strata,
+    n_unique_times_strata,
+    event_counts_at_times_strata,
+    time_return_inverse_strata,
+    n_strata,
+    alpha,
+    l1_ratio,
+    weights,
+    max_iter,
+    tol,
+):
 
     last_loss = np.array(np.inf)
 
     half_step = False
 
     for _ in range(max_iter):
-        (
-            neg_log_likelihood_loss,
-            neg_log_likelihood_jacobian,
-            neg_log_likelihood_hessian,
-        ) = breslow_neg_log_likelihood_loss_jacobian_hessian(
-            weights,
-            X,
-            events,
-            time_return_inverse,
-            n_unique_times,
-            event_counts_at_times,
-        )
+        neg_log_likelihoods = []
+        neg_log_likelihood_jacobians = []
+        neg_log_likelihood_hessians = []
+        for s_i in range(n_strata):
+            (
+                neg_log_likelihood_loss_strata,
+                neg_log_likelihood_jacobian_strata,
+                neg_log_likelihood_hessian_strata,
+            ) = breslow_neg_log_likelihood_loss_jacobian_hessian(
+                weights,
+                X_strata[s_i],
+                events_strata[s_i],
+                time_return_inverse_strata[s_i],
+                n_unique_times_strata[s_i],
+                event_counts_at_times_strata[s_i],
+            )
+            neg_log_likelihoods.append(neg_log_likelihood_loss_strata)
+            neg_log_likelihood_jacobians.append(neg_log_likelihood_jacobian_strata)
+            neg_log_likelihood_hessians.append(neg_log_likelihood_hessian_strata)
+
+        neg_log_likelihood_loss = np.sum(neg_log_likelihoods, 0)
+        neg_log_likelihood_jacobian = np.sum(neg_log_likelihood_jacobians, 0)
+        neg_log_likelihood_hessian = np.sum(neg_log_likelihood_hessians, 0)
+
         elasticnet_loss, elasticnet_jacobian, elasticnet_hessian = (
             elasticnet_loss_jacobian_hessian(weights, alpha, l1_ratio)
         )
@@ -348,73 +369,49 @@ index_per_not_censored_times_nb_signature = nb.types.Array(nb.types.int64, 1, "C
 )
 
 
-@nb.njit(index_per_not_censored_times_nb_signature, cache=True)
-def get_index_per_not_censored_times(time, events):
-    last_time = np.inf
-    current_index = 0
-    indexes = []
-
-    for i in range(time.shape[0]):
-        t = time[i]
-        e = events[i]
-
-        not_censored = e == 1
-
-        if t == last_time and not_censored:
-            current_index = current_index + 1
-
-        elif not_censored:
-            current_index = 0
-        else:
-            current_index = -1
-
-        last_time = t
-
-        indexes.append(current_index)
-
-    return np.array(indexes)
-
-
-def train_cox_ph_efron(X, times, events, alpha, l1_ratio, weights, max_iter, tol):
-
-    argsort = times.argsort(kind="mergesort")
-
-    times = times[argsort]
-    events = events[argsort]
-    X = X[argsort]
-
-    unique_times, time_return_inverse = np.unique(times, return_inverse=True)
-    n_unique_times = len(unique_times)
-
-    death_per_time = np.bincount(
-        time_return_inverse, weights=events, minlength=n_unique_times
-    )[time_return_inverse]
-
-    index_per_not_censored_times = get_index_per_not_censored_times(times, events)
-    l_div_m = np.divide(
-        np.array(index_per_not_censored_times),
-        death_per_time,
-        out=np.zeros(X.shape[0]),
-        where=np.logical_and(death_per_time != 0, events == 1),
-    )
+def train_cox_ph_efron(
+    n_strata,
+    X_strata,
+    events_strata,
+    n_unique_times_strata,
+    l_div_m_stata,
+    time_return_inverse_strata,
+    alpha,
+    l1_ratio,
+    weights,
+    max_iter,
+    tol,
+):
 
     last_loss = np.array(np.inf)
 
     half_step = False
 
     for _ in range(max_iter):
-        (
-            neg_log_likelihood_loss,
-            neg_log_likelihood_jacobian,
-            neg_log_likelihood_hessian,
-        ) = efron_neg_log_likelihood_loss_jacobian_hessian(
-            weights,
-            X,
-            events,
-            l_div_m,
-            time_return_inverse,
-            n_unique_times,
-        )
+        neg_log_likelihoods = []
+        neg_log_likelihood_jacobians = []
+        neg_log_likelihood_hessians = []
+        for s_i in range(n_strata):
+            (
+                neg_log_likelihood_loss_strata,
+                neg_log_likelihood_jacobian_strata,
+                neg_log_likelihood_hessian_strata,
+            ) = efron_neg_log_likelihood_loss_jacobian_hessian(
+                weights,
+                X_strata[s_i],
+                events_strata[s_i],
+                l_div_m_stata[s_i],
+                time_return_inverse_strata[s_i],
+                n_unique_times_strata[s_i],
+            )
+            neg_log_likelihoods.append(neg_log_likelihood_loss_strata)
+            neg_log_likelihood_jacobians.append(neg_log_likelihood_jacobian_strata)
+            neg_log_likelihood_hessians.append(neg_log_likelihood_hessian_strata)
+
+        neg_log_likelihood_loss = np.sum(neg_log_likelihoods, 0)
+        neg_log_likelihood_jacobian = np.sum(neg_log_likelihood_jacobians, 0)
+        neg_log_likelihood_hessian = np.sum(neg_log_likelihood_hessians, 0)
+
         elasticnet_loss, elasticnet_jacobian, elasticnet_hessian = (
             elasticnet_loss_jacobian_hessian(weights, alpha, l1_ratio)
         )

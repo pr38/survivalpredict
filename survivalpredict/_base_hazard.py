@@ -8,7 +8,6 @@ def _get_breslow_base_hazard(
     max_time,
     coef,
 ):
-    max_time = int(max(times))
     unique_times = np.arange(1, max_time + 1)
     rows_at_risk_at_time = times[:, np.newaxis] > unique_times
 
@@ -25,11 +24,3 @@ def _get_breslow_base_hazard(
         where=risk_per_time != 0,
     )
     return base_hazard
-
-
-def _estiamte_chen_base_hazard():
-    pass
-
-
-def _estiamte_weibull_base_hazard():
-    pass

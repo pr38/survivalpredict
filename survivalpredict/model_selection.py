@@ -10,7 +10,7 @@ from scipy.stats import rankdata
 from sklearn.base import BaseEstimator, MetaEstimatorMixin, _fit_context, clone
 from sklearn.model_selection import check_cv
 from sklearn.model_selection._search import ParameterGrid, ParameterSampler
-from sklearn.utils._param_validation import HasMethods, StrOptions, Interval
+from sklearn.utils._param_validation import HasMethods, Interval, StrOptions
 
 from .utils import validate_survival_data
 from .validation import _aggregate_score_dicts, _sur_fit_and_score
@@ -128,7 +128,7 @@ class Sur_BaseSearchCV(MetaEstimatorMixin, BaseEstimator, metaclass=ABCMeta):
         self.best_params_ = results[self.best_index_]["params"]
         self.best_score_ = mean_test_scores[self.best_index_]
 
-    def _refit_best_estimator(self, X, times, events, fit_params):
+    def _refit_best_estimator(self, X, times, events, fit_params,strata=None):
 
         self.best_estimator_ = clone(self.estimator).set_params(
             **clone(self.best_params_, safe=False)
@@ -136,15 +136,24 @@ class Sur_BaseSearchCV(MetaEstimatorMixin, BaseEstimator, metaclass=ABCMeta):
 
         refit_start_time = time.time()
 
-        self.best_estimator_.fit(X, times, events, **fit_params)
+        if strata is not None:
+            self.best_estimator_.fit(X, times, events,strata=strata, **fit_params)
+        else:
+            self.best_estimator_.fit(X, times, events, **fit_params)
 
         refit_end_time = time.time()
         self.refit_time_ = refit_end_time - refit_start_time
 
     @_fit_context(prefer_skip_nested_validation=False)
-    def fit(self, X, times, events, **params):
+    def fit(self, X, times, events,strata=None, **params):
 
         X, times, events = validate_survival_data(X, times, events)
+
+        if strata is not None:
+            self._uses_strata = True
+        else:
+            self._uses_strata = False
+
 
         if self.scoring == None:
             scoring = "integrated_brier_score_administrative"
@@ -189,6 +198,7 @@ class Sur_BaseSearchCV(MetaEstimatorMixin, BaseEstimator, metaclass=ABCMeta):
                 method=False,
                 brier_score_max_time=brier_score_max_time,
                 error_score=self.error_score,
+                strata=strata
             )
             for parameters, (train, test) in product(
                 parameters_to_search,
@@ -204,10 +214,9 @@ class Sur_BaseSearchCV(MetaEstimatorMixin, BaseEstimator, metaclass=ABCMeta):
 
         self._process_results(results, n_candidates, n_splits)
 
-        self._refit_best_estimator(X, times, events, params)
+        self._refit_best_estimator(X, times, events, params,strata=strata)
 
         return self
-
 
 
 class Sur_GridSearchCV(Sur_BaseSearchCV):

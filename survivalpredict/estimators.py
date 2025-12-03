@@ -9,11 +9,18 @@ from sklearn.utils.validation import check_is_fitted
 from ._base_hazard import _get_breslow_base_hazard
 from ._cox_ph_estimation import train_cox_ph_breslow, train_cox_ph_efron
 from ._discrete_time_ph_estimation import (
-    _chen_pdf, _gompertz_pdf, _log_logistic_pdf, _log_normal_pdf, _scale_times,
-    _weibull_pdf, get_parametric_discrete_time_ph_model,
+    _chen_pdf,
+    _gompertz_pdf,
+    _log_logistic_pdf,
+    _log_normal_pdf,
+    _scale_times,
+    _weibull_pdf,
+    get_parametric_discrete_time_ph_model,
     predict_parametric_discrete_time_ph_model,
-    train_parametric_discrete_time_ph_model)
-from .utils import validate_survival_data
+    train_parametric_discrete_time_ph_model,
+)
+from .utils import validate_survival_data, _as_int_np_array
+from ._stratification import preprocess_data_for_cox_ph, get_l_div_m_stata_per_strata
 
 
 class SurvivalPredictBase(BaseEstimator):
@@ -46,10 +53,13 @@ class CoxProportionalHazard(SurvivalPredictBase):
         self.tol = tol
 
     @_fit_context(prefer_skip_nested_validation=True)
-    def fit(self, X, times, events, weights=None, check_input=True):
+    def fit(self, X, times, events, strata=None, weights=None, check_input=True):
 
         if check_input:
             X, times, events = validate_survival_data(X, times, events)
+
+            if strata is not None:
+                strata = _as_int_np_array(strata)
 
         self._max_time_observed = np.max(times)
 
@@ -58,22 +68,54 @@ class CoxProportionalHazard(SurvivalPredictBase):
         else:
             coefs = np.zeros(X.shape[1])
 
+        if self.ties == "efron":
+            # get_l_div_m_stata_per_strata assumes sorted data
+            argsort = times.argsort(kind="mergesort")
+            times = times[argsort]
+            events = events[argsort]
+            X = X[argsort]
+
+        (
+            n_strata,
+            X_strata,
+            times_strata,
+            events_strata,
+            time_return_inverse_strata,
+            n_unique_times_strata,
+            event_counts_at_times_strata,
+        ) = preprocess_data_for_cox_ph(X, times, events, strata)
+
         if self.ties == "breslow":
+
             coefs, loss = train_cox_ph_breslow(
-                X,
-                times,
-                events,
+                X_strata,
+                events_strata,
+                n_unique_times_strata,
+                event_counts_at_times_strata,
+                time_return_inverse_strata,
+                n_strata,
                 self.alpha,
                 self.l1_ratio,
                 coefs,
                 self.max_iter,
                 self.tol,
             )
+
         elif self.ties == "efron":
+            l_div_m_stata = get_l_div_m_stata_per_strata(
+                events_strata,
+                times_strata,
+                time_return_inverse_strata,
+                n_unique_times_strata,
+            )
+
             coefs, loss = train_cox_ph_efron(
-                X,
-                times,
-                events,
+                n_strata,
+                X_strata,
+                events_strata,
+                n_unique_times_strata,
+                l_div_m_stata,
+                time_return_inverse_strata,
                 self.alpha,
                 self.l1_ratio,
                 coefs,
@@ -86,25 +128,57 @@ class CoxProportionalHazard(SurvivalPredictBase):
         self.coef_ = coefs
         self.n_log_likelihood = loss
 
-        self._breslow_base_hazard = _get_breslow_base_hazard(
-            X, times, events, self._max_time_observed, self.coef_
-        )
-        self._breslow_base_survival = np.exp(-self._breslow_base_hazard.cumsum())
+        if strata is not None:
+            self._uses_strata = True
+
+            self._breslow_base_hazard = np.zeros((n_strata, self._max_time_observed))
+
+            for s_i in range(n_strata):
+                self._breslow_base_hazard[s_i] = _get_breslow_base_hazard(
+                    X_strata[s_i],
+                    times_strata[s_i],
+                    events_strata[s_i],
+                    self._max_time_observed,
+                    self.coef_,
+                )
+
+            self._breslow_base_survival = np.exp(
+                -self._breslow_base_hazard.cumsum(axis=1)
+            )
+        else:
+            self._uses_strata = False
+
+            self._breslow_base_hazard = _get_breslow_base_hazard(
+                X, times, events, self._max_time_observed, self.coef_
+            )
+            self._breslow_base_survival = np.exp(-self._breslow_base_hazard.cumsum())
 
         self.is_fitted_ = True
         return self
 
-    def predict(self, X, max_time: Optional[int] = None):
+    def predict(self, X, strata=None, max_time: Optional[int] = None):
         check_is_fitted(self)
+
+        if strata is not None:
+            strata = _as_int_np_array(strata)
 
         if max_time is None:
             max_time = self._max_time_observed
         elif type(max_time) != int:
             raise ValueError("max_time must be an integer")
+        if self._uses_strata:
+            if strata is None:
+                raise ValueError(
+                    "strata must be present if model is trained with strata"
+                )
 
         risk = np.exp(np.dot(X, self.coef_))
 
-        survival = self._breslow_base_survival ** risk[:, None]
+        if self._uses_strata:
+            survival = self._breslow_base_survival[strata] ** risk[:, None]
+            # to do, deal with case where stata key in predict was not present in train
+        else:
+            survival = self._breslow_base_survival ** risk[:, None]
 
         if max_time == self._max_time_observed:
             return survival
