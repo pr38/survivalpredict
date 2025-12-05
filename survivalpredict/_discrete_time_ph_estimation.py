@@ -1,11 +1,17 @@
 import numpy as np
-import pymc as pm
-import pymc_extras as pmx
+import pymc as pm  # type: ignore
+import pymc_extras as pmx  # type: ignore
 import pytensor.tensor as pt
 
 
-def _scale_times(times, time_max):
-    return times / time_max
+from typing import Optional, Callable, Any
+from pytensor.tensor.variable import TensorVariable
+
+
+def _scale_times(
+    times: np.ndarray[tuple[int], np.dtype[np.int64]], time_max: int
+) -> np.ndarray[tuple[int], np.dtype[np.float64]]:
+    return np.divide(times, time_max)  # type: ignore
 
 
 def _weibull_pdf(x, params):
@@ -46,18 +52,25 @@ def _gompertz_pdf(x, params):
 
 
 def get_parametric_discrete_time_ph_model(
-    X,
-    times,
-    events,
-    base_hazard_pdf_callable,
-    n_base_hazard_params,
-    max_time=None,
-    labes_names=None,
-):
-    if not max_time:
+    X: np.ndarray[tuple[int, int], np.dtype[np.float64]],
+    times: np.ndarray[tuple[int], np.dtype[np.int64]],
+    events: np.ndarray[tuple[int], np.dtype[np.bool_]],
+    base_hazard_pdf_callable: Callable[
+        [
+            np.ndarray[tuple[int], np.dtype[np.float64]],
+            TensorVariable,  # 1d float64
+        ],
+        TensorVariable,  # 1d float64
+    ],
+    n_base_hazard_params: int,
+    max_time: Optional[int] = None,
+    labes_names: list[str] | np.ndarray[tuple[int], np.dtype[Any]] | None = None,
+) -> pm.Model:
+
+    if max_time is None:
         max_time = times.max()
 
-    if not labes_names:
+    if labes_names is None:
         labes_names = np.arange(X.shape[1])
 
     times_of_intrest = np.arange(1, max_time + 1)
@@ -116,8 +129,21 @@ def get_parametric_discrete_time_ph_model(
 
 
 def train_parametric_discrete_time_ph_model(
-    X, times, events, hazard_pdf_callable, n_base_hazard_params
-) -> tuple[np.array, np.array]:
+    X: np.ndarray[tuple[int, int], np.dtype[np.float64]],
+    times: np.ndarray[tuple[int], np.dtype[np.int64]],
+    events: np.ndarray[tuple[int], np.dtype[np.bool_]],
+    hazard_pdf_callable: Callable[
+        [
+            np.ndarray[tuple[int], np.dtype[np.float64]],
+            TensorVariable,  # 1d float64
+        ],
+        TensorVariable,  # 1d float64
+    ],
+    n_base_hazard_params: int,
+) -> tuple[
+    np.ndarray[tuple[int], np.dtype[np.float64]],
+    np.ndarray[tuple[int], np.dtype[np.float64]],
+]:
 
     model = get_parametric_discrete_time_ph_model(
         X, times, events, hazard_pdf_callable, n_base_hazard_params
@@ -136,8 +162,18 @@ def train_parametric_discrete_time_ph_model(
 
 
 def predict_parametric_discrete_time_ph_model(
-    X, coefs, base_hazard_params, max_time, base_hazard_pdf_callable
-):
+    X: np.ndarray[tuple[int, int], np.dtype[np.float64]],
+    coefs: np.ndarray[tuple[int], np.dtype[np.float64]],
+    base_hazard_params: np.ndarray[tuple[int], np.dtype[np.float64]],
+    max_time: int,
+    base_hazard_pdf_callable: Callable[
+        [
+            np.ndarray[tuple[int], np.dtype[np.float64]],
+            np.ndarray[tuple[int], np.dtype[np.float64]],
+        ],
+        np.ndarray[tuple[int], np.dtype[np.float64]],
+    ],
+) -> np.ndarray[tuple[int, int], np.dtype[np.float64]]:
 
     times_of_intrest = np.arange(1, max_time + 1)
     times_of_intrest_norm = _scale_times(times_of_intrest, max_time)
