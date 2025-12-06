@@ -30,6 +30,7 @@ def _unique_with_return_inverse(ar):
 split_and_preprocess_data_by_strata_siganture = nb.types.Tuple(
     (
         nb.types.int64,
+        nb.types.Array(nb.types.int64, 1, "C"),
         nb.types.List(nb.types.Array(nb.types.bool_, 1, "C")),
         nb.types.List(nb.types.Array(nb.types.int64, 1, "C")),
         nb.types.List(nb.types.Array(nb.types.float64, 2, "C")),
@@ -48,12 +49,10 @@ split_and_preprocess_data_by_strata_siganture = nb.types.Tuple(
 @nb.njit(split_and_preprocess_data_by_strata_siganture, cache=True)
 def split_and_preprocess_data_by_strata(X, times, events, strata):
 
-    unique_strata, stata_index = _unique_with_return_inverse(strata)
-    n_strata = len(unique_strata)
+    seen_strata, stata_index = _unique_with_return_inverse(strata)
+    n_strata = len(seen_strata)
 
     strata_masks = [s == stata_index for s in range(n_strata)]
-
-    n_strata = len(unique_strata)
 
     events_strata = []
     X_strata = []
@@ -83,6 +82,7 @@ def split_and_preprocess_data_by_strata(X, times, events, strata):
 
     return (
         n_strata,
+        seen_strata,
         events_strata,
         times_strata,
         X_strata,
@@ -96,6 +96,7 @@ def preprocess_data_for_cox_ph(X, times, events, strata=None):
     if strata is not None:
         (
             n_strata,
+            seen_strata,
             events_strata,
             times_strata,
             X_strata,
@@ -110,6 +111,8 @@ def preprocess_data_for_cox_ph(X, times, events, strata=None):
         event_counts_at_times = np.bincount(
             time_return_inverse, weights=events.astype(np.int64)
         )
+        n_strata = 0
+        seen_strata = None
         X_strata = [X]
         events_strata = [events]
         time_return_inverse_strata = [time_return_inverse]
@@ -120,6 +123,7 @@ def preprocess_data_for_cox_ph(X, times, events, strata=None):
 
     return (
         n_strata,
+        seen_strata,
         X_strata,
         times_strata,
         events_strata,
@@ -202,3 +206,30 @@ def get_l_div_m_stata_per_strata(
         l_div_m_stata.append(l_div_m_)
 
     return l_div_m_stata
+
+
+map_new_strata_signature = nb.types.Tuple(
+    (nb.types.Array(nb.types.int64, 1, "C", False, aligned=True), nb.types.boolean)
+)(
+    nb.types.Array(nb.types.int64, 1, "C", False, aligned=True),
+    nb.types.Array(nb.types.int64, 1, "C", False, aligned=True),
+)
+
+
+@nb.jit(map_new_strata_signature, cache=True)
+def map_new_strata(strata, seen_strata):
+    has_unseen_strata = False
+    n_rows = len(strata)
+    n_strata = len(seen_strata)
+    n_strata_plus_1 = n_strata + 1
+    output = np.repeat(-1, n_rows)
+    for ri in range(n_rows):
+        strata_ri = strata[ri]
+        for s_i in range(n_strata_plus_1):
+            if s_i != n_strata and strata_ri == seen_strata[s_i]:
+                output[ri] = s_i
+                break
+            elif s_i == n_strata:
+                has_unseen_strata = True
+
+    return output, has_unseen_strata

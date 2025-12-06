@@ -20,7 +20,11 @@ from ._discrete_time_ph_estimation import (
     train_parametric_discrete_time_ph_model,
 )
 from .utils import validate_survival_data, _as_int_np_array
-from ._stratification import preprocess_data_for_cox_ph, get_l_div_m_stata_per_strata
+from ._stratification import (
+    preprocess_data_for_cox_ph,
+    get_l_div_m_stata_per_strata,
+    map_new_strata,
+)
 
 
 class SurvivalPredictBase(BaseEstimator):
@@ -77,6 +81,7 @@ class CoxProportionalHazard(SurvivalPredictBase):
 
         (
             n_strata,
+            seen_strata,
             X_strata,
             times_strata,
             events_strata,
@@ -130,6 +135,7 @@ class CoxProportionalHazard(SurvivalPredictBase):
 
         if strata is not None:
             self._uses_strata = True
+            self.seen_strata = seen_strata
 
             self._breslow_base_hazard = np.zeros((n_strata, self._max_time_observed))
 
@@ -175,6 +181,11 @@ class CoxProportionalHazard(SurvivalPredictBase):
         risk = np.exp(np.dot(X, self.coef_))
 
         if self._uses_strata:
+            strata, has_unseen_strata = map_new_strata(strata, self.seen_strata)
+
+            if has_unseen_strata:
+                raise ValueError("predict data has unseen strata")
+
             survival = self._breslow_base_survival[strata] ** risk[:, None]
             # to do, deal with case where stata key in predict was not present in train
         else:
