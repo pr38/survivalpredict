@@ -114,8 +114,8 @@ def get_parametric_discrete_time_ph_model(
 
         def censored_bernoulli_logp(value, p, noncensored_mask):
             dis = pm.Bernoulli.logp(value, p=p)
-            return dis.flatten()[noncensored_mask.flatten()]
-            # return dis * noncensored_mask
+            # return dis.flatten()[noncensored_mask.flatten()]
+            return dis * noncensored_mask
 
         y = pm.DensityDist(
             "y",
