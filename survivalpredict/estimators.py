@@ -1,5 +1,5 @@
 from numbers import Integral, Real
-from typing import Literal, Optional
+from typing import Literal, Optional, Any
 
 import numpy as np
 from sklearn.base import BaseEstimator, _fit_context
@@ -308,14 +308,30 @@ class ParametricDiscreteTimePH(SurvivalPredictBase):
         base_hazard_pdf_callable, _ = self._get_distribution_function_and_n_prams()
         return base_hazard_pdf_callable(times_of_intrest_norm, self.base_hazard_prams_)
 
-    def get_pymc_model(self, X, times, events):
+    def get_pymc_model(
+        self,
+        X,
+        times,
+        events,
+        max_time: Optional[int] = None,
+        labes_names: list[str] | np.ndarray[tuple[int], np.dtype[Any]] | None = None,
+    ):
 
         base_hazard_pdf_callable, n_base_hazard_prams = (
             self._get_distribution_function_and_n_prams()
         )
 
-        max_time = times.max()
+        if max_time is None:
+            max_time = times.max()
 
         return get_parametric_discrete_time_ph_model(
-            X, times, events, base_hazard_pdf_callable, max_time, n_base_hazard_prams
+            X,
+            times,
+            events,
+            base_hazard_pdf_callable,
+            n_base_hazard_prams,
+            max_time,
+            labes_names,
+            self.alpha,
+            self.l1_ratio,
         )
