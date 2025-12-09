@@ -65,6 +65,8 @@ def get_parametric_discrete_time_ph_model(
     n_base_hazard_params: int,
     max_time: Optional[int] = None,
     labes_names: list[str] | np.ndarray[tuple[int], np.dtype[Any]] | None = None,
+    alpha: float = 0.0,
+    l1_ratio: float = 0.5,
 ) -> pm.Model:
 
     if max_time is None:
@@ -125,6 +127,11 @@ def get_parametric_discrete_time_ph_model(
             observed=survived_at_times,
         )
 
+        if alpha > 0.0:  # add elastic net loss
+            l1 = alpha * l1_ratio * pt.abs(coefs).sum()
+            l2 = 0.5 * alpha * (1.0 - l1_ratio) * pt.square(coefs).sum()
+            pm.Potential("elasticnet_loss", -(l1 + l2))
+
     return model
 
 
@@ -140,13 +147,21 @@ def train_parametric_discrete_time_ph_model(
         TensorVariable,  # 1d float64
     ],
     n_base_hazard_params: int,
+    alpha: float,
+    l1_ratio: float,
 ) -> tuple[
     np.ndarray[tuple[int], np.dtype[np.float64]],
     np.ndarray[tuple[int], np.dtype[np.float64]],
 ]:
 
     model = get_parametric_discrete_time_ph_model(
-        X, times, events, hazard_pdf_callable, n_base_hazard_params
+        X,
+        times,
+        events,
+        hazard_pdf_callable,
+        n_base_hazard_params,
+        alpha=alpha,
+        l1_ratio=l1_ratio,
     )
 
     with model:

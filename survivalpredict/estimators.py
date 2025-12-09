@@ -215,6 +215,8 @@ class ParametricDiscreteTimePH(SurvivalPredictBase):
         "distribution": [
             StrOptions({"chen", "weibull", "log_normal", "log_logistic", "gompertz"})
         ],
+        "alpha": [Interval(Real, 0, None, closed="left")],
+        "l1_ratio": [Interval(Real, 0, 1, closed="both")],
     }
 
     def __init__(
@@ -223,8 +225,12 @@ class ParametricDiscreteTimePH(SurvivalPredictBase):
         distribution: Optional[
             Literal["chen", "weibull", "log_normal", "log_logistic", "gompertz"]
         ] = "chen",
+        alpha: float = 0.0,
+        l1_ratio: float = 0.5,
     ):
         self.distribution = distribution
+        self.alpha = alpha
+        self.l1_ratio = l1_ratio
 
     def _get_distribution_function_and_n_prams(self):
         if self.distribution == "chen":
@@ -253,7 +259,13 @@ class ParametricDiscreteTimePH(SurvivalPredictBase):
         )
 
         coefs, base_hazard_prams = train_parametric_discrete_time_ph_model(
-            X, times, events, base_hazard_pdf_callable, n_base_hazard_prams
+            X,
+            times,
+            events,
+            base_hazard_pdf_callable,
+            n_base_hazard_prams,
+            self.alpha,
+            self.l1_ratio,
         )
 
         self.coef_ = coefs
