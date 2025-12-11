@@ -1,5 +1,5 @@
 from numbers import Integral, Real
-from typing import Literal, Optional, Any
+from typing import Any, Literal, Optional
 
 import numpy as np
 from sklearn.base import BaseEstimator, _fit_context
@@ -19,12 +19,14 @@ from ._discrete_time_ph_estimation import (
     predict_parametric_discrete_time_ph_model,
     train_parametric_discrete_time_ph_model,
 )
-from .utils import validate_survival_data, _as_int_np_array
+from ._nonparametric import get_kaplan_meier_survival_curve_from_time_as_int_
 from ._stratification import (
-    preprocess_data_for_cox_ph,
     get_l_div_m_stata_per_strata,
     map_new_strata,
+    preprocess_data_for_cox_ph,
+    split_and_preprocess_data_by_strata,
 )
+from .utils import _as_int, _as_int_np_array, validate_survival_data
 
 
 class SurvivalPredictBase(BaseEstimator):
@@ -169,6 +171,7 @@ class CoxProportionalHazard(SurvivalPredictBase):
             strata = _as_int_np_array(strata)
 
         if max_time is None:
+            max_time = _as_int(max_time, "max_time")
             max_time = self._max_time_observed
         elif type(max_time) != int:
             raise ValueError("max_time must be an integer")
@@ -278,6 +281,7 @@ class ParametricDiscreteTimePH(SurvivalPredictBase):
         check_is_fitted(self)
 
         if max_time is None:
+            max_time = _as_int(max_time, "max_time")
             max_time = self._max_time_observed
         elif type(max_time) != int:
             raise ValueError("max_time must be an integer")
@@ -335,3 +339,105 @@ class ParametricDiscreteTimePH(SurvivalPredictBase):
             self.alpha,
             self.l1_ratio,
         )
+
+
+class KaplanMeierSurvivalEstimator(SurvivalPredictBase):
+
+    def fit(self, X, times, events, strata=None, check_input=True):
+
+        if check_input:
+            X, times, events = validate_survival_data(X, times, events)
+
+            if strata is not None:
+                strata = _as_int_np_array(strata)
+
+        self._max_time_observed = int(np.max(times))
+
+        if strata is None:
+
+            self._uses_strata = False
+            self.kaplan_meier_survival_curve = (
+                get_kaplan_meier_survival_curve_from_time_as_int_(
+                    events, times, self._max_time_observed
+                )
+            )
+        else:
+            (n_strata, seen_strata, events_strata, times_strata, _, _, _, _) = (
+                split_and_preprocess_data_by_strata(X, times, events, strata)
+            )
+
+            self._uses_strata = True
+
+            self.seen_strata = seen_strata
+
+            self.kaplan_meier_survival_curve = np.zeros(
+                (n_strata, self._max_time_observed)
+            )
+
+            for s_i in range(n_strata):
+                self.kaplan_meier_survival_curve[s_i] = (
+                    get_kaplan_meier_survival_curve_from_time_as_int_(
+                        events_strata[s_i],
+                        times_strata[s_i],
+                        self._max_time_observed,
+                    )
+                )
+
+        self.is_fitted_ = True
+        return self
+
+    def predict(self, X, strata=None, max_time: Optional[int] = None):
+        check_is_fitted(self)
+
+        if strata is not None:
+            strata = _as_int_np_array(strata)
+
+        if max_time is None:
+            max_time = _as_int(max_time, "max_time")
+            max_time = self._max_time_observed
+        elif type(max_time) != int:
+            raise ValueError("max_time must be an integer")
+        if self._uses_strata:
+            if strata is None:
+                raise ValueError(
+                    "strata must be present if model is trained with strata"
+                )
+
+        kaplan_meier_survival_curve = self.kaplan_meier_survival_curve.copy()
+
+        if max_time < self._max_time_observed:
+            if self._uses_strata:
+                kaplan_meier_survival_curve = kaplan_meier_survival_curve[:, :max_time]
+            else:
+                kaplan_meier_survival_curve = kaplan_meier_survival_curve[:max_time]
+
+        elif max_time > self._max_time_observed:
+            missing_dims = max_time - self._max_time_observed
+
+            if self._uses_strata:
+                impulted_values = np.repeat(
+                    kaplan_meier_survival_curve[:, -1][np.newaxis], missing_dims, axis=0
+                ).T
+
+                kaplan_meier_survival_curve = np.hstack(
+                    [kaplan_meier_survival_curve, impulted_values]
+                )
+
+            else:
+                impulted_values = np.repeat(
+                    kaplan_meier_survival_curve[-1], missing_dims
+                )
+
+                kaplan_meier_survival_curve = np.hstack(
+                    [kaplan_meier_survival_curve, impulted_values]
+                )
+
+        if self._uses_strata:
+            strata, has_unseen_strata = map_new_strata(strata, self.seen_strata)
+
+            if has_unseen_strata:
+                raise ValueError("predict data has unseen strata")
+
+            return kaplan_meier_survival_curve[strata]
+        else:
+            return np.repeat(kaplan_meier_survival_curve[None, :], X.shape[0], axis=0)
