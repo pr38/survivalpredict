@@ -1,0 +1,12 @@
+call_failure
+complains
+charge_amount
+seconds_of_use
+frequency_of_use
+frequency_of_sms
+distinct_called_numbers
+age_group
+tariff_plan
+status
+age
+customer_value
