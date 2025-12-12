@@ -1,0 +1,17 @@
+[project]
+name = "survivalpredict"
+version = "0.0.1"
+description = "Predicting survival for out-of-sample data, using a scikit-learn-like api."
+readme = "README.md"
+requires-python = ">=3.10"
+authors = [
+     {name = "Pouya Rezvanipour", email = "pouyar3@yahoo.com"},
+]
+dependencies = [
+    "numba>=0.63.1",
+    "numpy>=2.3.5",
+    "pymc>=5.26.1",
+    "pymc-extras>=0.5.0",
+    "pytensor[jax]>=2.35.1",
+    "scikit-learn>=1.8.0",
+]
