@@ -1,3 +1,5 @@
+import os
+
 import numpy as np
 
 
@@ -9,9 +11,16 @@ def load_iranian_telecom_churn() -> dict[str, np.ndarray]:
     The dataset was originally used in the following article:
     Jafari-Marandi, R., Denton, J., Idris, A., Smith, B. K., & Keramati, A. (2020). Optimum Profit-Driven Churn Decision Making: Innovative Artificial Neural Networks in Telecom Industry. Neural Computing and Applications.
     """
-    X = np.loadtxt("iranian_churn_X.txt", delimiter=",")
-    times = np.loadtxt("iranian_churn_times.txt", delimiter=",")
-    events = np.loadtxt("iranian_churn_events.txt", delimiter=",")
-    col_names = np.loadtxt("iranian_churn_col_names.txt", delimiter=",", dtype=str)
+
+    dirname = os.path.dirname(os.path.abspath(__file__))
+
+    X = np.loadtxt(os.path.join(dirname, "iranian_churn_X.txt"), delimiter=",")
+    times = np.loadtxt(os.path.join(dirname, "iranian_churn_times.txt"), delimiter=",")
+    events = np.loadtxt(
+        os.path.join(dirname, "iranian_churn_events.txt"), delimiter=","
+    )
+    col_names = np.loadtxt(
+        os.path.join(dirname, "iranian_churn_col_names.txt"), delimiter=",", dtype=str
+    )
 
     return {"X": X, "times": times, "events": events, "column_names": col_names}
