@@ -1,10 +1,9 @@
+from typing import Any, Callable, Literal, Optional
+
 import numpy as np
 import pymc as pm  # type: ignore
 import pymc_extras as pmx  # type: ignore
 import pytensor.tensor as pt
-
-
-from typing import Optional, Callable, Any
 from pytensor.tensor.variable import TensorVariable
 
 
@@ -49,6 +48,12 @@ def _gompertz_pdf(x, params):
         * params[1]
         * np.exp(params[0] + params[1] * x - (params[0] * np.exp(params[1] * x)))
     )
+
+
+def _additive_chen_weibull_pdf(x, params):
+    return params[0] * params[1] * x ** (params[1] - 1) + params[2] * params[3] * (
+        params[2] * x
+    ) ** (params[3] - 1)
 
 
 def get_parametric_discrete_time_ph_model(
@@ -149,6 +154,7 @@ def train_parametric_discrete_time_ph_model(
     n_base_hazard_params: int,
     alpha: float,
     l1_ratio: float,
+    pytensor_mode: Literal["JAX", "NUMBA"],
 ) -> tuple[
     np.ndarray[tuple[int], np.dtype[np.float64]],
     np.ndarray[tuple[int], np.dtype[np.float64]],
@@ -166,7 +172,7 @@ def train_parametric_discrete_time_ph_model(
 
     with model:
         mle = pmx.find_MAP(
-            compile_kwargs={"mode": "JAX"},
+            compile_kwargs={"mode": pytensor_mode},
             progressbar=False,
         )
 

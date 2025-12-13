@@ -9,23 +9,15 @@ from sklearn.utils.validation import check_is_fitted
 from ._base_hazard import _get_breslow_base_hazard
 from ._cox_ph_estimation import train_cox_ph_breslow, train_cox_ph_efron
 from ._discrete_time_ph_estimation import (
-    _chen_pdf,
-    _gompertz_pdf,
-    _log_logistic_pdf,
-    _log_normal_pdf,
-    _scale_times,
-    _weibull_pdf,
+    _additive_chen_weibull_pdf, _chen_pdf, _gompertz_pdf, _log_logistic_pdf,
+    _log_normal_pdf, _scale_times, _weibull_pdf,
     get_parametric_discrete_time_ph_model,
     predict_parametric_discrete_time_ph_model,
-    train_parametric_discrete_time_ph_model,
-)
+    train_parametric_discrete_time_ph_model)
 from ._nonparametric import get_kaplan_meier_survival_curve_from_time_as_int_
-from ._stratification import (
-    get_l_div_m_stata_per_strata,
-    map_new_strata,
-    preprocess_data_for_cox_ph,
-    split_and_preprocess_data_by_strata,
-)
+from ._stratification import (get_l_div_m_stata_per_strata, map_new_strata,
+                              preprocess_data_for_cox_ph,
+                              split_and_preprocess_data_by_strata)
 from .utils import _as_int, _as_int_np_array, validate_survival_data
 
 
@@ -216,24 +208,43 @@ class CoxProportionalHazard(SurvivalPredictBase):
 class ParametricDiscreteTimePH(SurvivalPredictBase):
     _parameter_constraints: dict = {
         "distribution": [
-            StrOptions({"chen", "weibull", "log_normal", "log_logistic", "gompertz"})
+            StrOptions(
+                {
+                    "chen",
+                    "weibull",
+                    "log_normal",
+                    "log_logistic",
+                    "gompertz",
+                    "additive_chen_weibull",
+                }
+            )
         ],
         "alpha": [Interval(Real, 0, None, closed="left")],
         "l1_ratio": [Interval(Real, 0, 1, closed="both")],
+        "pytensor_mode": [StrOptions({"JAX", "NUMBA"})],
     }
 
     def __init__(
         self,
         *,
         distribution: Optional[
-            Literal["chen", "weibull", "log_normal", "log_logistic", "gompertz"]
+            Literal[
+                "chen",
+                "weibull",
+                "log_normal",
+                "log_logistic",
+                "gompertz",
+                "additive_chen_weibull",
+            ]
         ] = "chen",
         alpha: float = 0.0,
         l1_ratio: float = 0.5,
+        pytensor_mode: Literal["JAX", "NUMBA"] = "NUMBA",
     ):
         self.distribution = distribution
         self.alpha = alpha
         self.l1_ratio = l1_ratio
+        self.pytensor_mode = pytensor_mode
 
     def _get_distribution_function_and_n_prams(self):
         if self.distribution == "chen":
@@ -246,6 +257,8 @@ class ParametricDiscreteTimePH(SurvivalPredictBase):
             return _log_logistic_pdf, 2
         elif self.distribution == "gompertz":
             return _gompertz_pdf, 2
+        elif self.distribution == "additive_chen_weibull":
+            return _additive_chen_weibull_pdf, 4
         else:
             raise ValueError(f"{self.distribution} distribution is not yet implemented")
 
@@ -269,6 +282,7 @@ class ParametricDiscreteTimePH(SurvivalPredictBase):
             n_base_hazard_prams,
             self.alpha,
             self.l1_ratio,
+            self.pytensor_mode,
         )
 
         self.coef_ = coefs
