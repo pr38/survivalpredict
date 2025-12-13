@@ -1,4 +1,5 @@
 from typing import Any, Callable, Literal, Optional
+import warnings
 
 import numpy as np
 import pymc as pm  # type: ignore
@@ -169,12 +170,15 @@ def train_parametric_discrete_time_ph_model(
         alpha=alpha,
         l1_ratio=l1_ratio,
     )
+    
+    with warnings.catch_warnings():
+        warnings.filterwarnings("ignore",category=UserWarning)
 
-    with model:
-        mle = pmx.find_MAP(
-            compile_kwargs={"mode": pytensor_mode},
-            progressbar=False,
-        )
+        with model:
+            mle = pmx.find_MAP(
+                compile_kwargs={"mode": pytensor_mode},
+                progressbar=False,
+            )
 
     coefs = mle.posterior["coefs"].values.flatten()
     base_hazard_params = mle.posterior["base_hazard_params"].values.flatten()
