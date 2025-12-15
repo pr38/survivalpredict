@@ -12,7 +12,7 @@ def _get_breslow_base_hazard(
     rows_at_risk_at_time = times[:, np.newaxis] > unique_times
 
     failure_per_unique_time = np.bincount(
-        times.astype(np.int64), events, minlength=max_time
+        times.astype(np.int64), events, minlength=max_time + 1
     )[1:]
 
     risk = np.exp(np.dot(X, coef))
