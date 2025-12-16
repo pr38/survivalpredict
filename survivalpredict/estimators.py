@@ -9,15 +9,24 @@ from sklearn.utils.validation import check_is_fitted
 from ._base_hazard import _get_breslow_base_hazard
 from ._cox_ph_estimation import train_cox_ph_breslow, train_cox_ph_efron
 from ._discrete_time_ph_estimation import (
-    _additive_chen_weibull_pdf, _chen_pdf, _gompertz_pdf, _log_logistic_pdf,
-    _log_normal_pdf, _scale_times, _weibull_pdf,
+    _additive_chen_weibull_pdf,
+    _chen_pdf,
+    _gompertz_pdf,
+    _log_logistic_pdf,
+    _log_normal_pdf,
+    _scale_times,
+    _weibull_pdf,
     get_parametric_discrete_time_ph_model,
     predict_parametric_discrete_time_ph_model,
-    train_parametric_discrete_time_ph_model)
+    train_parametric_discrete_time_ph_model,
+)
 from ._nonparametric import get_kaplan_meier_survival_curve_from_time_as_int_
-from ._stratification import (get_l_div_m_stata_per_strata, map_new_strata,
-                              preprocess_data_for_cox_ph,
-                              split_and_preprocess_data_by_strata)
+from ._stratification import (
+    get_l_div_m_stata_per_strata,
+    map_new_strata,
+    preprocess_data_for_cox_ph,
+    split_and_preprocess_data_by_strata,
+)
 from .utils import _as_int, _as_int_np_array, validate_survival_data
 
 
@@ -163,10 +172,10 @@ class CoxProportionalHazard(SurvivalPredictBase):
             strata = _as_int_np_array(strata)
 
         if max_time is None:
-            max_time = _as_int(max_time, "max_time")
             max_time = self._max_time_observed
-        elif type(max_time) != int:
-            raise ValueError("max_time must be an integer")
+        else:
+            max_time = _as_int(max_time, "max_time")
+
         if self._uses_strata:
             if strata is None:
                 raise ValueError(
@@ -295,10 +304,9 @@ class ParametricDiscreteTimePH(SurvivalPredictBase):
         check_is_fitted(self)
 
         if max_time is None:
-            max_time = _as_int(max_time, "max_time")
             max_time = self._max_time_observed
-        elif type(max_time) != int:
-            raise ValueError("max_time must be an integer")
+        else:
+            max_time = _as_int(max_time, "max_time")
 
         base_hazard_pdf_callable, _ = self._get_distribution_function_and_n_prams()
 
@@ -319,6 +327,8 @@ class ParametricDiscreteTimePH(SurvivalPredictBase):
 
         if max_time is None:
             max_time = self._max_time_observed
+        else:
+            max_time = _as_int(max_time, "max_time")
 
         times_of_intrest = np.arange(1, max_time + 1)
         times_of_intrest_norm = _scale_times(times_of_intrest, max_time)
@@ -340,7 +350,9 @@ class ParametricDiscreteTimePH(SurvivalPredictBase):
         )
 
         if max_time is None:
-            max_time = times.max()
+            max_time = self._max_time_observed
+        else:
+            max_time = _as_int(max_time, "max_time")
 
         return get_parametric_discrete_time_ph_model(
             X,
@@ -377,7 +389,9 @@ class KaplanMeierSurvivalEstimator(SurvivalPredictBase):
             )
         else:
             (n_strata, seen_strata, events_strata, times_strata, _, _, _, _) = (
-                split_and_preprocess_data_by_strata(X, times, events, strata)
+                split_and_preprocess_data_by_strata(
+                    np.ones((X.shape[0], 1)), times, events, strata
+                )
             )
 
             self._uses_strata = True
@@ -407,10 +421,10 @@ class KaplanMeierSurvivalEstimator(SurvivalPredictBase):
             strata = _as_int_np_array(strata)
 
         if max_time is None:
-            max_time = _as_int(max_time, "max_time")
             max_time = self._max_time_observed
-        elif type(max_time) != int:
-            raise ValueError("max_time must be an integer")
+        else:
+            max_time = _as_int(max_time, "max_time")
+
         if self._uses_strata:
             if strata is None:
                 raise ValueError(
