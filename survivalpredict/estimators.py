@@ -231,6 +231,7 @@ class ParametricDiscreteTimePH(SurvivalPredictBase):
         "alpha": [Interval(Real, 0, None, closed="left")],
         "l1_ratio": [Interval(Real, 0, 1, closed="both")],
         "pytensor_mode": [StrOptions({"JAX", "NUMBA"})],
+        "strata_uses_pytensor_scan": ["boolean"],
     }
 
     def __init__(
@@ -249,11 +250,13 @@ class ParametricDiscreteTimePH(SurvivalPredictBase):
         alpha: float = 0.0,
         l1_ratio: float = 0.5,
         pytensor_mode: Literal["JAX", "NUMBA"] = "NUMBA",
+        strata_uses_pytensor_scan: bool = False,
     ):
         self.distribution = distribution
         self.alpha = alpha
         self.l1_ratio = l1_ratio
         self.pytensor_mode = pytensor_mode
+        self.strata_uses_pytensor_scan = strata_uses_pytensor_scan
 
     def _get_distribution_function_and_n_prams(self):
         if self.distribution == "chen":
@@ -272,10 +275,12 @@ class ParametricDiscreteTimePH(SurvivalPredictBase):
             raise ValueError(f"{self.distribution} distribution is not yet implemented")
 
     @_fit_context(prefer_skip_nested_validation=True)
-    def fit(self, X, times, events, weights=None, check_input=True):
+    def fit(self, X, times, events, strata=None, check_input=True):
 
         if check_input:
             X, times, events = validate_survival_data(X, times, events)
+            if strata is not None:
+                strata = _as_int_np_array(strata)
 
         self._max_time_observed = np.max(times)
 
@@ -283,16 +288,40 @@ class ParametricDiscreteTimePH(SurvivalPredictBase):
             self._get_distribution_function_and_n_prams()
         )
 
-        coefs, base_hazard_prams = train_parametric_discrete_time_ph_model(
-            X,
-            times,
-            events,
-            base_hazard_pdf_callable,
-            n_base_hazard_prams,
-            self.alpha,
-            self.l1_ratio,
-            self.pytensor_mode,
-        )
+        if strata is not None:
+            self._uses_strata = True
+            self.seen_strata = np.unique(strata)
+
+            n_strata = len(self.seen_strata)
+
+            strata, _ = map_new_strata(strata, self.seen_strata)
+
+            coefs, base_hazard_prams = train_parametric_discrete_time_ph_model(
+                X,
+                times,
+                events,
+                base_hazard_pdf_callable,
+                n_base_hazard_prams,
+                self.alpha,
+                self.l1_ratio,
+                self.pytensor_mode,
+                strata,
+                n_strata,
+                self.strata_uses_pytensor_scan,
+            )
+
+        else:
+
+            coefs, base_hazard_prams = train_parametric_discrete_time_ph_model(
+                X,
+                times,
+                events,
+                base_hazard_pdf_callable,
+                n_base_hazard_prams,
+                self.alpha,
+                self.l1_ratio,
+                self.pytensor_mode,
+            )
 
         self.coef_ = coefs
         self.base_hazard_prams_ = base_hazard_prams
@@ -300,13 +329,26 @@ class ParametricDiscreteTimePH(SurvivalPredictBase):
         self.is_fitted_ = True
         return self
 
-    def predict(self, X, max_time: Optional[int] = None):
+    def predict(self, X, strata=None, max_time: Optional[int] = None):
         check_is_fitted(self)
+
+        if strata is not None:
+            strata = _as_int_np_array(strata)
 
         if max_time is None:
             max_time = self._max_time_observed
         else:
             max_time = _as_int(max_time, "max_time")
+
+        if self._uses_strata:
+            if strata is None:
+                raise ValueError(
+                    "strata must be present if model is trained with strata"
+                )
+            strata, has_unseen_strata = map_new_strata(strata, self.seen_strata)
+
+            if has_unseen_strata:
+                raise ValueError("predict data has unseen strata")
 
         base_hazard_pdf_callable, _ = self._get_distribution_function_and_n_prams()
 
@@ -316,6 +358,7 @@ class ParametricDiscreteTimePH(SurvivalPredictBase):
             self.base_hazard_prams_,
             max_time,
             base_hazard_pdf_callable,
+            strata,
         )
 
     def predict_risk(self, X):
@@ -334,7 +377,18 @@ class ParametricDiscreteTimePH(SurvivalPredictBase):
         times_of_intrest_norm = _scale_times(times_of_intrest, max_time)
 
         base_hazard_pdf_callable, _ = self._get_distribution_function_and_n_prams()
-        return base_hazard_pdf_callable(times_of_intrest_norm, self.base_hazard_prams_)
+
+        if self._uses_strata:
+            return np.apply_along_axis(
+                lambda a: base_hazard_pdf_callable(times_of_intrest_norm, a),
+                axis=1,
+                arr=self.base_hazard_prams_,
+            )
+
+        else:
+            return base_hazard_pdf_callable(
+                times_of_intrest_norm, self.base_hazard_prams_
+            )
 
     def get_pymc_model(
         self,
@@ -343,8 +397,9 @@ class ParametricDiscreteTimePH(SurvivalPredictBase):
         events,
         max_time: Optional[int] = None,
         labes_names: list[str] | np.ndarray[tuple[int], np.dtype[Any]] | None = None,
+        strata: Optional[np.ndarray[tuple[int], np.dtype[np.int64]]] = None,
+        strata_names: list[str] | np.ndarray[tuple[int], np.dtype[Any]] | None = None,
     ):
-
         base_hazard_pdf_callable, n_base_hazard_prams = (
             self._get_distribution_function_and_n_prams()
         )
@@ -353,6 +408,11 @@ class ParametricDiscreteTimePH(SurvivalPredictBase):
             max_time = self._max_time_observed
         else:
             max_time = _as_int(max_time, "max_time")
+
+        if strata is not None:
+            seen_strata = np.unique(strata)
+            n_strata = len(seen_strata)
+            strata, _ = map_new_strata(strata, self.seen_strata)
 
         return get_parametric_discrete_time_ph_model(
             X,
@@ -364,6 +424,10 @@ class ParametricDiscreteTimePH(SurvivalPredictBase):
             labes_names,
             self.alpha,
             self.l1_ratio,
+            strata,
+            n_strata,
+            strata_names,
+            self.strata_uses_pytensor_scan,
         )
 
 

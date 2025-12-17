@@ -5,6 +5,7 @@ import numpy as np
 import pymc as pm  # type: ignore
 import pymc_extras as pmx  # type: ignore
 import pytensor.tensor as pt
+import pytensor
 from pytensor.tensor.variable import TensorVariable
 
 
@@ -73,6 +74,10 @@ def get_parametric_discrete_time_ph_model(
     labes_names: list[str] | np.ndarray[tuple[int], np.dtype[Any]] | None = None,
     alpha: float = 0.0,
     l1_ratio: float = 0.5,
+    strata: Optional[np.ndarray[tuple[int], np.dtype[np.int64]]] = None,
+    n_strata=Optional[int],
+    strata_names: list[str] | np.ndarray[tuple[int], np.dtype[Any]] | None = None,
+    strata_uses_pytensor_scan: bool = False,
 ) -> pm.Model:
 
     if max_time is None:
@@ -92,30 +97,64 @@ def get_parametric_discrete_time_ph_model(
     row_ids = np.arange(X.shape[0])
     base_hazard_params_ids = range(n_base_hazard_params)
 
-    with pm.Model(
-        coords={
-            "labes": labes_names,
-            "times": times_of_intrest,
-            "row_ids": row_ids,
-            "base_hazard_params_ids": base_hazard_params_ids,
-        }
-    ) as model:
+    coords = {
+        "labes": labes_names,
+        "times": times_of_intrest,
+        "row_ids": row_ids,
+        "base_hazard_params_ids": base_hazard_params_ids,
+    }
+
+    uses_strata = strata is not None
+
+    if uses_strata:
+        if strata_names is None:
+            strata_names = np.arange(n_strata)
+
+        coords["strata_ids"] = strata_names
+
+    with pm.Model(coords=coords) as model:
 
         data = pm.Data("data", X, dims=("row_ids", "labes"))
 
         coefs = pm.Normal("coefs", sigma=50, dims="labes")
 
-        base_hazard_params = pm.Exponential(
-            "base_hazard_params", 5, dims="base_hazard_params_ids"
-        )
-
-        base_hazards = base_hazard_pdf_callable(
-            times_of_intrest_norm, base_hazard_params
-        )
-
         relative_risk = pt.exp(pt.dot(data, coefs))
 
-        hazard = base_hazards * relative_risk[:, None]
+        if uses_strata:
+
+            base_hazard_params = pm.Exponential(
+                "base_hazard_params", 5, dims=("strata_ids", "base_hazard_params_ids")
+            )
+            base_hazards, _ = pytensor.scan(
+                lambda a: _chen_pdf(times_of_intrest_norm, a), base_hazard_params
+            )
+
+            strata_pt = pm.Data("strata", strata, dims="row_ids")
+
+            if strata_uses_pytensor_scan:
+                # pytensor_scan can make calcuating hazard more memory efficient, at the price of a longer pytensor compile time
+                hazard, _ = pytensor.scan(
+                    fn=lambda relative_risk_i, strata_i, base_hazard: base_hazard[
+                        strata_i
+                    ]
+                    * relative_risk_i,
+                    sequences=[relative_risk, strata_pt],
+                    non_sequences=[base_hazards],
+                )
+            else:
+                hazard = base_hazards[strata_pt] * relative_risk[:, None]
+
+        else:
+            base_hazard_params = pm.Exponential(
+                "base_hazard_params", 5, dims="base_hazard_params_ids"
+            )
+
+            base_hazards = base_hazard_pdf_callable(
+                times_of_intrest_norm, base_hazard_params
+            )
+
+            hazard = base_hazards * relative_risk[:, None]
+
         hazard_estimation_cumsum = pt.cumsum(hazard, axis=1)
 
         survival = pt.exp(-hazard_estimation_cumsum)
@@ -156,9 +195,13 @@ def train_parametric_discrete_time_ph_model(
     alpha: float,
     l1_ratio: float,
     pytensor_mode: Literal["JAX", "NUMBA"],
+    strata: Optional[np.ndarray[tuple[int], np.dtype[np.int64]]] = None,
+    n_strata=Optional[int],
+    strata_uses_pytensor_scan: bool = False,
 ) -> tuple[
     np.ndarray[tuple[int], np.dtype[np.float64]],
-    np.ndarray[tuple[int], np.dtype[np.float64]],
+    np.ndarray[tuple[int], np.dtype[np.float64]]
+    | np.ndarray[tuple[int, int], np.dtype[np.float64]],
 ]:
 
     model = get_parametric_discrete_time_ph_model(
@@ -169,10 +212,13 @@ def train_parametric_discrete_time_ph_model(
         n_base_hazard_params,
         alpha=alpha,
         l1_ratio=l1_ratio,
+        strata=strata,
+        n_strata=n_strata,
+        strata_uses_pytensor_scan=strata_uses_pytensor_scan,
     )
-    
+
     with warnings.catch_warnings():
-        warnings.filterwarnings("ignore",category=UserWarning)
+        warnings.filterwarnings("ignore", category=UserWarning)
 
         with model:
             mle = pmx.find_MAP(
@@ -181,7 +227,10 @@ def train_parametric_discrete_time_ph_model(
             )
 
     coefs = mle.posterior["coefs"].values.flatten()
-    base_hazard_params = mle.posterior["base_hazard_params"].values.flatten()
+    if strata is None:
+        base_hazard_params = mle.posterior["base_hazard_params"].values.flatten()
+    else:
+        base_hazard_params = mle.posterior["base_hazard_params"].values[0][0]
 
     return coefs, base_hazard_params
 
@@ -189,7 +238,10 @@ def train_parametric_discrete_time_ph_model(
 def predict_parametric_discrete_time_ph_model(
     X: np.ndarray[tuple[int, int], np.dtype[np.float64]],
     coefs: np.ndarray[tuple[int], np.dtype[np.float64]],
-    base_hazard_params: np.ndarray[tuple[int], np.dtype[np.float64]],
+    base_hazard_params: (
+        np.ndarray[tuple[int], np.dtype[np.float64]]
+        | np.ndarray[tuple[int, int], np.dtype[np.float64]]
+    ),
     max_time: int,
     base_hazard_pdf_callable: Callable[
         [
@@ -198,16 +250,30 @@ def predict_parametric_discrete_time_ph_model(
         ],
         np.ndarray[tuple[int], np.dtype[np.float64]],
     ],
+    strata: Optional[np.ndarray[tuple[int], np.dtype[np.int64]]] = None,
 ) -> np.ndarray[tuple[int, int], np.dtype[np.float64]]:
 
     times_of_intrest = np.arange(1, max_time + 1)
     times_of_intrest_norm = _scale_times(times_of_intrest, max_time)
 
-    base_hazards = base_hazard_pdf_callable(times_of_intrest_norm, base_hazard_params)
-
     relative_risk = np.exp(np.dot(X, coefs))
 
-    hazard = base_hazards * relative_risk[:, None]
+    if strata is not None:
+        base_hazards = np.apply_along_axis(
+            lambda a: base_hazard_pdf_callable(times_of_intrest_norm, a),
+            axis=1,
+            arr=base_hazard_params,
+        )
+        hazard = (
+            base_hazards[strata] * relative_risk[:, None]
+        )  # to do: make this more memory efficient
+
+    else:
+        base_hazards = base_hazard_pdf_callable(
+            times_of_intrest_norm, base_hazard_params  # type: ignore
+        )
+        hazard = base_hazards * relative_risk[:, None]
+
     hazard_estimation_cumsum = np.cumsum(hazard, axis=1)
 
     survival = np.exp(-hazard_estimation_cumsum)

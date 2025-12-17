@@ -1,9 +1,7 @@
-import numpy as np
 import pytest
-from sklearn.preprocessing import OneHotEncoder
 
 from ..estimators import CoxProportionalHazard
-from ..model_selection import Sur_GridSearchCV, Sur_RandomizedSearchCV
+from ..model_selection import Sur_GridSearchCV
 from ..datasets import load_iranian_telecom_churn
 
 
