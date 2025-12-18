@@ -1,5 +1,6 @@
 from numbers import Integral, Real
 from typing import Any, Literal, Optional
+import warnings
 
 import numpy as np
 from sklearn.base import BaseEstimator, _fit_context
@@ -232,6 +233,8 @@ class ParametricDiscreteTimePH(SurvivalPredictBase):
         "l1_ratio": [Interval(Real, 0, 1, closed="both")],
         "pytensor_mode": [StrOptions({"JAX", "NUMBA"})],
         "strata_uses_pytensor_scan": ["boolean"],
+        "coef_prior_normal_sigma": [Interval(Real, 0, None, closed="left")],
+        "base_harard_prior_exponential_lam": [Interval(Real, 0, None, closed="left")],
     }
 
     def __init__(
@@ -251,12 +254,16 @@ class ParametricDiscreteTimePH(SurvivalPredictBase):
         l1_ratio: float = 0.5,
         pytensor_mode: Literal["JAX", "NUMBA"] = "NUMBA",
         strata_uses_pytensor_scan: bool = False,
+        coef_prior_normal_sigma: float = 1.5,
+        base_harard_prior_exponential_lam: float = 5.0,
     ):
         self.distribution = distribution
         self.alpha = alpha
         self.l1_ratio = l1_ratio
         self.pytensor_mode = pytensor_mode
         self.strata_uses_pytensor_scan = strata_uses_pytensor_scan
+        self.coef_prior_normal_sigma = coef_prior_normal_sigma
+        self.base_harard_prior_exponential_lam = base_harard_prior_exponential_lam
 
     def _get_distribution_function_and_n_prams(self):
         if self.distribution == "chen":
@@ -308,6 +315,8 @@ class ParametricDiscreteTimePH(SurvivalPredictBase):
                 strata,
                 n_strata,
                 self.strata_uses_pytensor_scan,
+                self.coef_prior_normal_sigma,
+                self.base_harard_prior_exponential_lam,
             )
 
         else:
@@ -321,10 +330,17 @@ class ParametricDiscreteTimePH(SurvivalPredictBase):
                 self.alpha,
                 self.l1_ratio,
                 self.pytensor_mode,
+                coef_prior_normal_sigma=self.coef_prior_normal_sigma,
+                base_harard_prior_exponential_lam=self.base_harard_prior_exponential_lam,
             )
 
         self.coef_ = coefs
         self.base_hazard_prams_ = base_hazard_prams
+
+        if all(self.coef_ == 0.0):
+            warnings.warn(
+                "The model did not train, consider normalizing your features or changing prior parameters"
+            )
 
         self.is_fitted_ = True
         return self
@@ -428,6 +444,8 @@ class ParametricDiscreteTimePH(SurvivalPredictBase):
             n_strata,
             strata_names,
             self.strata_uses_pytensor_scan,
+            coef_prior_normal_sigma=self.coef_prior_normal_sigma,
+            base_harard_prior_exponential_lam=self.base_harard_prior_exponential_lam,
         )
 
 

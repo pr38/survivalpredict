@@ -78,6 +78,8 @@ def get_parametric_discrete_time_ph_model(
     n_strata=Optional[int],
     strata_names: list[str] | np.ndarray[tuple[int], np.dtype[Any]] | None = None,
     strata_uses_pytensor_scan: bool = False,
+    coef_prior_normal_sigma: Optional[float] = None,
+    base_harard_prior_exponential_lam: Optional[float] = None,
 ) -> pm.Model:
 
     if max_time is None:
@@ -116,14 +118,16 @@ def get_parametric_discrete_time_ph_model(
 
         data = pm.Data("data", X, dims=("row_ids", "labes"))
 
-        coefs = pm.Normal("coefs", sigma=50, dims="labes")
+        coefs = pm.Normal("coefs", sigma=coef_prior_normal_sigma, dims="labes")
 
         relative_risk = pt.exp(pt.dot(data, coefs))
 
         if uses_strata:
 
             base_hazard_params = pm.Exponential(
-                "base_hazard_params", 5, dims=("strata_ids", "base_hazard_params_ids")
+                "base_hazard_params",
+                base_harard_prior_exponential_lam,
+                dims=("strata_ids", "base_hazard_params_ids"),
             )
             base_hazards, _ = pytensor.scan(
                 lambda a: _chen_pdf(times_of_intrest_norm, a), base_hazard_params
@@ -146,7 +150,9 @@ def get_parametric_discrete_time_ph_model(
 
         else:
             base_hazard_params = pm.Exponential(
-                "base_hazard_params", 5, dims="base_hazard_params_ids"
+                "base_hazard_params",
+                base_harard_prior_exponential_lam,
+                dims="base_hazard_params_ids",
             )
 
             base_hazards = base_hazard_pdf_callable(
@@ -198,6 +204,8 @@ def train_parametric_discrete_time_ph_model(
     strata: Optional[np.ndarray[tuple[int], np.dtype[np.int64]]] = None,
     n_strata=Optional[int],
     strata_uses_pytensor_scan: bool = False,
+    coef_prior_normal_sigma: Optional[float] = None,
+    base_harard_prior_exponential_lam: Optional[float] = None,
 ) -> tuple[
     np.ndarray[tuple[int], np.dtype[np.float64]],
     np.ndarray[tuple[int], np.dtype[np.float64]]
@@ -215,6 +223,8 @@ def train_parametric_discrete_time_ph_model(
         strata=strata,
         n_strata=n_strata,
         strata_uses_pytensor_scan=strata_uses_pytensor_scan,
+        coef_prior_normal_sigma=coef_prior_normal_sigma,
+        base_harard_prior_exponential_lam=base_harard_prior_exponential_lam,
     )
 
     with warnings.catch_warnings():
