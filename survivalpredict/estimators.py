@@ -265,6 +265,8 @@ class ParametricDiscreteTimePH(SurvivalPredictBase):
         self.coef_prior_normal_sigma = coef_prior_normal_sigma
         self.base_harard_prior_exponential_lam = base_harard_prior_exponential_lam
 
+        self.is_fitted_ = False
+
     def _get_distribution_function_and_n_prams(self):
         if self.distribution == "chen":
             return _chen_pdf, 2
@@ -421,14 +423,17 @@ class ParametricDiscreteTimePH(SurvivalPredictBase):
         )
 
         if max_time is None:
-            max_time = self._max_time_observed
+            if self.is_fitted_:
+                max_time = self._max_time_observed
+            else:
+                max_time = int(np.max(times))
         else:
             max_time = _as_int(max_time, "max_time")
 
         if strata is not None:
             seen_strata = np.unique(strata)
             n_strata = len(seen_strata)
-            strata, _ = map_new_strata(strata, self.seen_strata)
+            strata, _ = map_new_strata(strata, seen_strata)
 
         return get_parametric_discrete_time_ph_model(
             X,
