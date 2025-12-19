@@ -130,7 +130,7 @@ def get_parametric_discrete_time_ph_model(
                 dims=("strata_ids", "base_hazard_params_ids"),
             )
             base_hazards, _ = pytensor.scan(
-                lambda a: _chen_pdf(times_of_intrest_norm, a), base_hazard_params
+                lambda a: base_hazard_pdf_callable(times_of_intrest_norm, a), base_hazard_params
             )
 
             strata_pt = pm.Data("strata", strata, dims="row_ids")
