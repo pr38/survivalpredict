@@ -12,7 +12,7 @@ from sklearn.model_selection import check_cv
 from sklearn.model_selection._search import ParameterGrid, ParameterSampler
 from sklearn.utils._param_validation import HasMethods, Interval, StrOptions
 
-from .utils import validate_survival_data
+from ._data_validation import validate_survival_data
 from .validation import _aggregate_score_dicts, _sur_fit_and_score
 
 

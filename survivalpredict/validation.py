@@ -12,7 +12,7 @@ from .metrics import (
     _integrated_brier_score_administrative,
     _integrated_brier_score_ipcw,
 )
-from .utils import validate_survival_data, _as_int_np_array
+from ._data_validation import validate_survival_data, _as_int_np_array
 
 __all__ = ["sur_cross_val_score", "sur_cross_validate"]
 

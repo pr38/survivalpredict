@@ -3,7 +3,7 @@ from typing import Optional
 import numpy as np
 
 from ._nonparametric import get_kaplan_meier_survival_curve_from_time_as_int_
-from .utils import _as_bool_np_array, _as_int, _as_int_np_array, _as_numeric_np_array
+from ._data_validation import _as_bool_np_array, _as_int, _as_int_np_array, _as_numeric_np_array
 
 __all__ = [
     "brier_scores_ipcw",

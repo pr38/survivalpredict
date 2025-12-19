@@ -28,7 +28,7 @@ from ._stratification import (
     preprocess_data_for_cox_ph,
     split_and_preprocess_data_by_strata,
 )
-from .utils import _as_int, _as_int_np_array, validate_survival_data
+from ._data_validation import _as_int, _as_int_np_array, validate_survival_data
 
 
 class SurvivalPredictBase(BaseEstimator):

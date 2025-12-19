@@ -26,7 +26,7 @@ def _as_int_np_array(a):
         a = a.astype(dtype)
         return a
     except:
-        raise ValueError("the times array must be an integer type")
+        raise ValueError("the times array must be integer type")
 
 
 def _as_bool_np_array(a):
@@ -35,14 +35,14 @@ def _as_bool_np_array(a):
         a = a.astype(np.bool_)
         return a
     except:
-        raise ValueError("the event array must be an bool type")
+        raise ValueError("the event array must be bool type")
 
 
 def _as_int(a, param_name):
     try:
         return int(a)
     except ValueError as e:
-        raise ValueError(f"{param_name} should be an integer")
+        raise ValueError(f"{param_name} should be integer")
 
 
 def validate_survival_data(X, times, events):
