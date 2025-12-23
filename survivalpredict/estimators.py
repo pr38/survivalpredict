@@ -39,6 +39,13 @@ from ._data_validation import (
     _as_numeric_np_array,
 )
 
+__all__ = [
+    "CoxProportionalHazard",
+    "ParametricDiscreteTimePH",
+    "KaplanMeierSurvivalEstimator",
+    "KNeighborsSurvival",
+]
+
 
 class SurvivalPredictBase(BaseEstimator):
     pass
@@ -331,7 +338,7 @@ class ParametricDiscreteTimePH(SurvivalPredictBase):
             )
 
         else:
-            self._uses_strata =False
+            self._uses_strata = False
             coefs, base_hazard_prams = train_parametric_discrete_time_ph_model(
                 X,
                 times,
