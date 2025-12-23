@@ -1,11 +1,14 @@
 from numbers import Integral, Real
-from typing import Any, Literal, Optional
+from typing import Any, Literal, Optional, Callable
 import warnings
+import itertools
 
 import numpy as np
 from sklearn.base import BaseEstimator, _fit_context
 from sklearn.utils._param_validation import Interval, StrOptions
 from sklearn.utils.validation import check_is_fitted
+from sklearn.neighbors import NearestNeighbors
+from sklearn.neighbors._base import VALID_METRICS as VALID_METRICS_KNN
 
 from ._base_hazard import _get_breslow_base_hazard
 from ._cox_ph_estimation import train_cox_ph_breslow, train_cox_ph_efron
@@ -21,6 +24,7 @@ from ._discrete_time_ph_estimation import (
     predict_parametric_discrete_time_ph_model,
     train_parametric_discrete_time_ph_model,
 )
+from ._neighbors import build_kaplan_meier_survival_curve_from_neighbors_indexes
 from ._nonparametric import get_kaplan_meier_survival_curve_from_time_as_int_
 from ._stratification import (
     get_l_div_m_stata_per_strata,
@@ -28,7 +32,12 @@ from ._stratification import (
     preprocess_data_for_cox_ph,
     split_and_preprocess_data_by_strata,
 )
-from ._data_validation import _as_int, _as_int_np_array, validate_survival_data
+from ._data_validation import (
+    _as_int,
+    _as_int_np_array,
+    validate_survival_data,
+    _as_numeric_np_array,
+)
 
 
 class SurvivalPredictBase(BaseEstimator):
@@ -322,7 +331,7 @@ class ParametricDiscreteTimePH(SurvivalPredictBase):
             )
 
         else:
-
+            self._uses_strata =False
             coefs, base_hazard_prams = train_parametric_discrete_time_ph_model(
                 X,
                 times,
@@ -556,3 +565,78 @@ class KaplanMeierSurvivalEstimator(SurvivalPredictBase):
             return kaplan_meier_survival_curve[strata]
         else:
             return np.repeat(kaplan_meier_survival_curve[None, :], X.shape[0], axis=0)
+
+
+class KNeighborsSurvival(SurvivalPredictBase):
+    _parameter_constraints: dict = {
+        "n_neighbors": [Interval(Integral, 1, None, closed="left"), None],
+        "algorithm": [StrOptions({"auto", "ball_tree", "kd_tree", "brute"})],
+        "leaf_size": [Interval(Integral, 1, None, closed="left")],
+        "p": [Interval(Real, 0, None, closed="right"), None],
+        "metric": [
+            StrOptions(set(itertools.chain(*VALID_METRICS_KNN.values()))),
+            callable,
+        ],
+        "metric_params": [dict, None],
+        "n_jobs": [Integral, None],
+    }
+
+    def __init__(
+        self,
+        n_neighbors: Optional[int] = 10,
+        algorithm: Literal["auto", "ball_tree", "kd_tree", "brute"] = "auto",
+        leaf_size: int = 30,
+        p: int | float = 2,
+        metric: str | Callable = "minkowski",
+        metric_param: Optional[dict] = None,
+        n_jobs: Optional[int] = None,
+    ):
+
+        self.n_neighbors = n_neighbors
+        self.algorithm = algorithm
+        self.leaf_size = leaf_size
+        self.p = p
+        self.metric = metric
+        self.metric_param = metric_param
+        self.n_jobs = n_jobs
+
+        self.is_fitted_ = False
+
+    def fit(self, X, times, events, check_input=True):
+        if check_input:
+            X, times, events = validate_survival_data(X, times, events)
+
+        self._max_time_observed = int(np.max(times))
+
+        self._nearestneighbors = NearestNeighbors(
+            n_neighbors=self.n_neighbors,
+            algorithm=self.algorithm,
+            leaf_size=self.leaf_size,
+            p=self.p,
+            metric=self.metric,
+            metric_params=self.metric_param,
+            n_jobs=self.n_jobs,
+        )
+
+        self._nearestneighbors.fit(X)
+
+        self._times_in_memmory = times
+        self._events_in_memmory = events
+
+        self.is_fitted_ = True
+
+        return self
+
+    def predict(self, X, max_time: Optional[int] = None):
+        check_is_fitted(self)
+
+        if max_time is None:
+            max_time = self._max_time_observed
+        else:
+            max_time = _as_int(max_time, "max_time")
+
+        neighbors_indexes = self._nearestneighbors.kneighbors(X, return_distance=False)
+
+        return build_kaplan_meier_survival_curve_from_neighbors_indexes(
+            self._times_in_memmory, self._events_in_memmory, neighbors_indexes, max_time
+        )
