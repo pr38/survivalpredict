@@ -15,7 +15,7 @@ def _as_numeric_np_array(a):
         raise ValueError("the feature array must be numeric")
 
 
-def _as_int_np_array(a):
+def _as_int_np_array(a, param_name="times array"):
     try:
         a = np.array(a)
         if np.issubdtype(np.dtype, np.integer):
@@ -26,7 +26,7 @@ def _as_int_np_array(a):
         a = a.astype(dtype)
         return a
     except:
-        raise ValueError("the times array must be integer type")
+        raise ValueError(f"{param_name} must be array-like with integer data type")
 
 
 def _as_bool_np_array(a):
