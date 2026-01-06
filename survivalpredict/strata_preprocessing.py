@@ -1,5 +1,5 @@
 from itertools import product
-from numbers import Integral, Real
+from numbers import Integral
 from typing import Literal, Optional
 
 import numba as nb
@@ -7,11 +7,15 @@ import numpy as np
 from scipy.cluster.vq import kmeans
 from sklearn.base import BaseEstimator, TransformerMixin, _fit_context
 from sklearn.utils._param_validation import Interval, StrOptions
+from sklearn.utils.metaestimators import _BaseComposition
 from sklearn.utils.validation import check_is_fitted
 
 from ._data_validation import _as_int_np_array, _as_numeric_np_array
 
-__all__ = ["StrataDiscretizer"]
+__all__ = [
+    "StrataBuilderDiscretizer",
+    "StrataBuilderEncoder",
+]
 
 
 digitized_per_col_signature = nb.types.Array(
@@ -44,13 +48,13 @@ class _StrataBuilderBase(TransformerMixin, BaseEstimator):
 
 
 class StrataBuilderDiscretizer(_StrataBuilderBase):
-    """
-    Builds strata keys from numeric data. Add onto existing strata, if existing strata is passed in.
+    """Builds strata keys from numeric data. Add onto existing strata, if
+    existing strata is passed in.
 
-    if predefined 'splits' are given, strata is build via the given bins and 'n_splits' and 'strategy' is ignored.
-    Otherwise 'n_splits' and 'strategy' is used to generate bins.
-    Largly inspired by scikitlearn's KBinsDiscretizer.
-
+    if predefined 'splits' are given, strata is build via the given bins
+    and 'n_splits' and 'strategy' is ignored. Otherwise 'n_splits' and
+    'strategy' is used to generate bins. Largly inspired by
+    scikitlearn's KBinsDiscretizer.
     """
 
     _parameter_constraints: dict = {
@@ -86,6 +90,32 @@ class StrataBuilderDiscretizer(_StrataBuilderBase):
 
         self.is_fitted_ = False
 
+    def _find_splits(self, X):
+
+        if self.strategy == "uniform":
+            col_mins = X.min(axis=0)
+            col_maxs = X.max(axis=0)
+            bins_np = np.linspace(col_mins, col_maxs, self.n_bins, axis=1)
+            splits_np = bins_np[:, 1:-1]
+            splits = [np.unique(i) for i in splits_np]
+
+        elif self.strategy == "quantile":
+            percentile_levels = np.linspace(0, 100, self.n_bins)
+            bins_np = np.percentile(X, percentile_levels, axis=0).T
+            splits_np = bins_np[:, 1:-1]
+            splits = [np.unique(i) for i in splits_np]
+
+        else:  # self.strategy == 'kmeans':
+
+            splits = []
+
+            for i_col in range(X.shape[1]):
+                Xi = X[:, i_col]
+                splits_i, _ = kmeans(Xi, self.n_bins - 2)
+                splits.append(np.sort(splits_i))
+
+        return splits
+
     @_fit_context(prefer_skip_nested_validation=True)
     def fit(self, X, times=None, events=None, strata=None, check_input=True):
 
@@ -105,32 +135,27 @@ class StrataBuilderDiscretizer(_StrataBuilderBase):
         self._n_strata_cols = X.shape[1]
 
         if self.splits is None:
-            if self.strategy == "uniform":
-                col_mins = X.min(axis=0)
-                col_maxs = X.max(axis=0)
-                bins_np = np.linspace(col_mins, col_maxs, self.n_bins, axis=1)
-                splits_np = bins_np[:, 1:-1]
-                splits = [np.unique(i) for i in splits_np]
-
-            elif self.strategy == "quantile":
-                percentile_levels = np.linspace(0, 100, self.n_bins)
-                bins_np = np.percentile(X, percentile_levels, axis=0).T
-                splits_np = bins_np[:, 1:-1]
-                splits = [np.unique(i) for i in splits_np]
-
-            else:  # self.strategy == 'kmeans':
-
-                splits = []
-
-                for i_col in range(X.shape[1]):
-                    Xi = X[:, i_col]
-                    splits_i, _ = kmeans(Xi, self.n_bins - 2)
-                    splits.append(np.sort(splits_i))
-
+            splits = self._find_splits(X)
         else:
             splits = self.splits
 
         self._splits = splits
+
+        if self._uses_strata:
+            self.preexisting_strata_keys = np.unique(strata)
+
+            possible_splits = [strata] + self._splits
+
+        else:
+            possible_splits = self._splits
+
+        posible_digitized_keys = [
+            tuple(i) for i in product(*(range(len(i) + 2) for i in possible_splits))
+        ]
+
+        self._digitized_map = dict(
+            zip(posible_digitized_keys, range(len(posible_digitized_keys)))
+        )
 
         self.is_fitted_ = True
 
@@ -160,17 +185,13 @@ class StrataBuilderDiscretizer(_StrataBuilderBase):
         if self._uses_strata:
             digitized = np.hstack((strata[:, None], digitized))
 
-        seen_strata_keys, new_strata = np.unique(digitized, return_inverse=True, axis=0)
-
-        self.strata_keys_ = seen_strata_keys
-
-        return new_strata
+        return np.array([self._digitized_map[tuple(i)] for i in digitized.tolist()])
 
 
-class StrataBuilderEncoder(_StrataBuilderBase):
-    """
-    Builds strata keys from Categorical data. If existing strata is passed in, Add onto existing strata.
+class StrataBuilderEncoder(_StrataBuilderBase, auto_wrap_output_keys=None):
+    """Builds strata keys from Categorical data.
 
+    If existing strata is passed in, Add onto existing strata.
     """
 
     def fit(self, X, times=None, events=None, strata=None, check_input=True):
