@@ -143,7 +143,7 @@ class StrataBuilderDiscretizer(_StrataBuilderBase):
         if self._uses_strata:
             if strata is None:
                 raise ValueError(
-                    "strata must be present if model is trained with strata"
+                    "strata must be present if transformer is fitted with strata"
                 )
             strata = _as_int_np_array(strata, "strata")
 
@@ -162,6 +162,79 @@ class StrataBuilderDiscretizer(_StrataBuilderBase):
 
         seen_strata_keys, new_strata = np.unique(digitized, return_inverse=True, axis=0)
 
-        self._last_seen_strata_keys = seen_strata_keys
+        self.strata_keys_ = seen_strata_keys
 
+        return new_strata
+
+
+class StrataBuilderEncoder(_StrataBuilderBase):
+    """
+    Builds strata keys from Categorical data. If existing strata is passed in, Add onto existing strata.
+
+    """
+
+    def fit(self, X, times=None, events=None, strata=None, check_input=True):
+
+        self._uses_strata = strata is not None
+
+        if check_input == True and self._uses_strata:
+            strata = _as_int_np_array(strata, "strata")
+
+            if len(strata.shape) > 1:
+                raise ValueError("strata must be 1 dimensional")
+
+        X = np.array(X)
+
+        if self._uses_strata:
+            X = np.hstack((strata[:, None], X))
+
+        self.strata_keys_ = np.unique(X, axis=0)
+
+        self.strata_to_key_map = dict(
+            zip(
+                [tuple(i) for i in self.strata_keys_.tolist()],
+                range(len(self.strata_keys_)),
+            )
+        )
+
+        self.is_fitted_ = True
+
+        return self
+
+    def transform(self, X, times=None, events=None, strata=None):
+        check_is_fitted(self)
+
+        if self._uses_strata:
+            if strata is None:
+                raise ValueError(
+                    "strata must be present if transformer is fitted with strata"
+                )
+            strata = _as_int_np_array(strata, "strata")
+
+            if len(strata.shape) > 1:
+                raise ValueError("strata must be 1 dimensional")
+
+        X = np.array(X)
+
+        if self._uses_strata:
+            X = np.hstack((strata[:, None], X))
+
+        return np.array([self.strata_to_key_map[tuple(i)] for i in X.tolist()])
+
+    def fit_transform(self, X, times=None, events=None, strata=None):
+
+        self._uses_strata = strata is not None
+
+        if self._uses_strata:
+            strata = _as_int_np_array(strata, "strata")
+
+            if len(strata.shape) > 1:
+                raise ValueError("strata must be 1 dimensional")
+
+        X = np.array(X)
+
+        if self._uses_strata:
+            X = np.hstack((strata[:, None], X))
+
+        self.strata_keys_, new_strata = np.unique(X, axis=0, return_inverse=True)
         return new_strata
