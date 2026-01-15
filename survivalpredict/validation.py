@@ -7,7 +7,7 @@ from joblib.parallel import Parallel, delayed
 from sklearn.base import clone
 from sklearn.model_selection import check_cv
 
-from .estimators import SurvivalPredictBase
+from .estimators import _SurvivalPredictBase
 from .metrics import (
     _integrated_brier_score_administrative,
     _integrated_brier_score_ipcw,
@@ -111,7 +111,7 @@ def _sur_fit_and_score(
             if return_train_score:
                 train_predictions = method(estimator, X_train)
 
-        elif issubclass(type(estimator), SurvivalPredictBase):
+        elif issubclass(type(estimator), _SurvivalPredictBase):
             if has_strata:
                 predictions = estimator.predict(
                     X_test, max_time=brier_score_max_time, strata=strata_test

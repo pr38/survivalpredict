@@ -1,17 +1,23 @@
-from numbers import Integral, Real
-from typing import Any, Literal, Optional, Callable
-import warnings
 import itertools
+import warnings
+from numbers import Integral, Real
+from typing import Any, Callable, Literal, Optional
 
 import numpy as np
 from sklearn.base import BaseEstimator, _fit_context
-from sklearn.utils._param_validation import Interval, StrOptions
-from sklearn.utils.validation import check_is_fitted
 from sklearn.neighbors import NearestNeighbors
 from sklearn.neighbors._base import VALID_METRICS as VALID_METRICS_KNN
+from sklearn.utils._param_validation import Interval, StrOptions
+from sklearn.utils.validation import check_is_fitted
 
 from ._base_hazard import _get_breslow_base_hazard
 from ._cox_ph_estimation import train_cox_ph_breslow, train_cox_ph_efron
+from ._data_validation import (
+    _as_int,
+    _as_int_np_array,
+    _as_numeric_np_array,
+    validate_survival_data,
+)
 from ._discrete_time_ph_estimation import (
     _additive_chen_weibull_pdf,
     _chen_pdf,
@@ -32,12 +38,6 @@ from ._stratification import (
     preprocess_data_for_cox_ph,
     split_and_preprocess_data_by_strata,
 )
-from ._data_validation import (
-    _as_int,
-    _as_int_np_array,
-    validate_survival_data,
-    _as_numeric_np_array,
-)
 
 __all__ = [
     "CoxProportionalHazard",
@@ -47,11 +47,19 @@ __all__ = [
 ]
 
 
-class SurvivalPredictBase(BaseEstimator):
-    pass
+class _SurvivalPredictBase(BaseEstimator):
+    def fit_predict(self, *args, **kwargs):
+        predict_kwargs = kwargs.copy()
+
+        if "max_time" in kwargs:
+            del kwargs["max_time"]
+
+        X = args[0]
+
+        return self.fit(*args, **kwargs).predict(X, **predict_kwargs)
 
 
-class CoxProportionalHazard(SurvivalPredictBase):
+class CoxProportionalHazard(_SurvivalPredictBase):
 
     _parameter_constraints: dict = {
         "alpha": [Interval(Real, 0, None, closed="left")],
@@ -231,7 +239,7 @@ class CoxProportionalHazard(SurvivalPredictBase):
         return np.exp(np.dot(X, self.coef_))
 
 
-class ParametricDiscreteTimePH(SurvivalPredictBase):
+class ParametricDiscreteTimePH(_SurvivalPredictBase):
     _parameter_constraints: dict = {
         "distribution": [
             StrOptions(
@@ -280,8 +288,6 @@ class ParametricDiscreteTimePH(SurvivalPredictBase):
         self.strata_uses_pytensor_scan = strata_uses_pytensor_scan
         self.coef_prior_normal_sigma = coef_prior_normal_sigma
         self.base_harard_prior_exponential_lam = base_harard_prior_exponential_lam
-
-        self.is_fitted_ = False
 
     def _get_distribution_function_and_n_prams(self):
         if self.distribution == "chen":
@@ -470,7 +476,7 @@ class ParametricDiscreteTimePH(SurvivalPredictBase):
         )
 
 
-class KaplanMeierSurvivalEstimator(SurvivalPredictBase):
+class KaplanMeierSurvivalEstimator(_SurvivalPredictBase):
 
     def fit(self, X, times, events, strata=None, check_input=True):
 
@@ -574,7 +580,7 @@ class KaplanMeierSurvivalEstimator(SurvivalPredictBase):
             return np.repeat(kaplan_meier_survival_curve[None, :], X.shape[0], axis=0)
 
 
-class KNeighborsSurvival(SurvivalPredictBase):
+class KNeighborsSurvival(_SurvivalPredictBase):
     _parameter_constraints: dict = {
         "n_neighbors": [Interval(Integral, 1, None, closed="left"), None],
         "algorithm": [StrOptions({"auto", "ball_tree", "kd_tree", "brute"})],
@@ -606,8 +612,6 @@ class KNeighborsSurvival(SurvivalPredictBase):
         self.metric = metric
         self.metric_param = metric_param
         self.n_jobs = n_jobs
-
-        self.is_fitted_ = False
 
     def fit(self, X, times, events, check_input=True):
         if check_input:

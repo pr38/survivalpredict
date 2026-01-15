@@ -16,11 +16,13 @@ except ImportError:
     from sklearn.utils._estimator_html_repr import _VisualBlock
 
 from ._data_validation import _as_int_np_array, _as_numeric_np_array
+from ._estimator_utils import _get_estimator_names
 
 __all__ = [
     "StrataBuilderDiscretizer",
     "StrataBuilderEncoder",
     "StrataColumnTransformer",
+    "make_strata_column_transformer",
 ]
 
 
@@ -95,8 +97,6 @@ class StrataBuilderDiscretizer(_StrataBuilderBase, auto_wrap_output_keys=None):
         self.n_bins = n_bins
         self.strategy = strategy
         self.splits = splits
-
-        self.is_fitted_ = False
 
     def _find_splits(self, X):
 
@@ -335,8 +335,6 @@ class StrataColumnTransformer(
     ):
         self.strata_transformers = strata_transformers
 
-        # self.is_fitted_ = False
-
     def _get_selected_subset_of_data(self, X, selection):
         if callable(selection):  # selection is callable
             selection(X)
@@ -509,3 +507,17 @@ class StrataColumnTransformer(
                 raise TypeError(
                     "All strata transformers should implement fit, transform and fit_transform"
                 )
+
+
+def make_strata_column_transformer(
+    *strata_transformer_columns: tuple[
+        StrataBuilderProtocal, Sequence[Any] | int | str | slice
+    ],
+) -> StrataColumnTransformer:
+    estimators, selections = zip(*strata_transformer_columns)
+
+    names = _get_estimator_names(estimators)
+
+    strata_transformers = list(zip(names, estimators, selections))
+
+    return StrataColumnTransformer(strata_transformers)
