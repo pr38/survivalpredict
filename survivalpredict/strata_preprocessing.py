@@ -7,6 +7,7 @@ import numpy as np
 from scipy.cluster.vq import kmeans
 from sklearn.base import BaseEstimator, TransformerMixin, _fit_context
 from sklearn.utils._param_validation import Interval, StrOptions
+from sklearn.utils._tags import TransformerTags
 from sklearn.utils.metaestimators import _BaseComposition
 from sklearn.utils.validation import check_is_fitted
 
@@ -235,6 +236,9 @@ class StrataBuilderEncoder(_StrataBuilderBase, auto_wrap_output_keys=None):
         self._n_cols_seen = X.shape[1]
 
         if self._uses_strata:
+            if len(X.shape) == 1:
+                X = X[:, None]
+
             X = np.hstack((strata[:, None], X))
 
         self.strata_keys_ = np.unique(X, axis=0)
@@ -293,6 +297,9 @@ class StrataBuilderEncoder(_StrataBuilderBase, auto_wrap_output_keys=None):
         X = np.array(X)
 
         if self._uses_strata:
+            if len(X.shape) == 1:
+                X = X[:, None]
+
             X = np.hstack((strata[:, None], X))
 
         self.strata_keys_, new_strata = np.unique(X, axis=0, return_inverse=True)
@@ -317,7 +324,7 @@ class StrataBuilderProtocal(Protocol):
 class StrataColumnTransformer(
     TransformerMixin, _BaseComposition, auto_wrap_output_keys=None
 ):
-    """Applies StrataBuilders to columns of an array or pandas DataFrame.
+    """Applies StrataBuilders to columns of an array or DataFrame.
 
     Different columns or column subsets of the input are separately ran
     through diffrent StrataBuilders. If there are pre-existing strata, it
@@ -385,9 +392,9 @@ class StrataColumnTransformer(
 
         self._validate_strata_transformers()
 
-        self._uses_strata = strata is not None
+        self.has_preexisting_strata = strata is not None
 
-        if check_input == True and self._uses_strata:
+        if check_input == True and self.has_preexisting_strata:
             strata = _as_int_np_array(strata, "strata")
 
             if len(strata.shape) > 1:
@@ -405,6 +412,8 @@ class StrataColumnTransformer(
     def fit_transform(self, X, times=None, events=None, strata=None, check_input=True):
 
         self._validate_strata_transformers()
+
+        self.has_preexisting_strata = strata is not None
 
         selections = []
 
@@ -438,11 +447,19 @@ class StrataColumnTransformer(
 
         selections = []
 
+        if self.has_preexisting_strata:
+            if strata is None:
+                raise ValueError(
+                    "strata must be present if transformer is fitted with strata"
+                )
+            strata = _as_int_np_array(strata, "strata")
+
+            if len(strata.shape) > 1:
+                raise ValueError("strata must be 1 dimensional")
+
         if strata is not None:
-            self.has_preexisting_strata = True
             stratas = [strata]
         else:
-            self.has_preexisting_strata = False
             stratas = []
 
         for _, st, selection in self.strata_transformers:

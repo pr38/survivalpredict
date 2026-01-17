@@ -1,8 +1,7 @@
-from collections import Counter
 from inspect import signature
 from itertools import islice
 from numbers import Integral
-from typing import Any, Iterable, Optional
+from typing import Any, Optional
 
 import numpy as np
 from sklearn.base import BaseEstimator, _fit_context, clone
@@ -84,7 +83,6 @@ class SklearnSurvivalPipeline(_BaseComposition):
     _parameter_constraints: dict = {
         "steps": [list, Hidden(tuple)],
         "max_time": [Interval(Integral, 1, None, closed="left")],
-        "transform_input": [list, None],
         "memory": [None, str, HasMethods(["cache"])],
     }
 
@@ -93,12 +91,10 @@ class SklearnSurvivalPipeline(_BaseComposition):
         steps: list[tuple[str, BaseEstimator]],
         max_time: int,
         *,
-        transform_input=None,
         memory=None,
     ):
         self.steps = steps
         self.max_time = max_time
-        self.transform_input = transform_input
         self.memory = memory
 
     def _iter(self, with_final=True):
@@ -162,8 +158,6 @@ class SklearnSurvivalPipeline(_BaseComposition):
         else:
             self._final_estimator.fit(X, times, events)
 
-        self.is_fitted_ = True
-
         return X, times, events, strata
 
     @_fit_context(prefer_skip_nested_validation=True)
@@ -171,6 +165,8 @@ class SklearnSurvivalPipeline(_BaseComposition):
         times, events, strata = _unpack__sklearn_pipeline_target(y)
 
         self._fit(X, times, events, strata)
+
+        self.is_fitted_ = True
 
         return self
 
@@ -260,13 +256,11 @@ class SklearnSurvivalPipeline(_BaseComposition):
 
 
 def make_sklearn_survival_pipeline(
-    *steps_no_names: BaseEstimator, max_time: int, transform_input=None, memory=None
+    *steps_no_names: BaseEstimator, max_time: int, memory=None
 ):
     max_time = _as_int(max_time, "max_time")
 
     names = _get_estimator_names(steps_no_names)
     steps_with_names = list(zip(names, steps_no_names))
 
-    return SklearnSurvivalPipeline(
-        steps_with_names, max_time, transform_input=transform_input, memory=memory
-    )
+    return SklearnSurvivalPipeline(steps_with_names, max_time, memory=memory)
