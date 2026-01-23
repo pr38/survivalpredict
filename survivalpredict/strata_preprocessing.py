@@ -1,3 +1,4 @@
+from copy import deepcopy
 from itertools import product
 from numbers import Integral
 from typing import Any, Literal, Optional, Protocol, Sequence
@@ -5,9 +6,8 @@ from typing import Any, Literal, Optional, Protocol, Sequence
 import numba as nb
 import numpy as np
 from scipy.cluster.vq import kmeans
-from sklearn.base import BaseEstimator, TransformerMixin, _fit_context
+from sklearn.base import BaseEstimator, TransformerMixin, _fit_context, clone
 from sklearn.utils._param_validation import Interval, StrOptions
-from sklearn.utils._tags import TransformerTags
 from sklearn.utils.metaestimators import _BaseComposition
 from sklearn.utils.validation import check_is_fitted
 
@@ -215,7 +215,7 @@ class StrataBuilderDiscretizer(_StrataBuilderBase, auto_wrap_output_keys=None):
 class StrataBuilderEncoder(_StrataBuilderBase, auto_wrap_output_keys=None):
     """Builds strata keys from Categorical data.
 
-    If existing strata is passed in, Add onto existing strata.
+    If existing strata is passed in, it adds onto existing strata.
     """
 
     def fit(self, X, times=None, events=None, strata=None, check_input=True):
@@ -342,14 +342,42 @@ class StrataColumnTransformer(
     ):
         self.strata_transformers = strata_transformers
 
-    def _get_selected_subset_of_data(self, X, selection):
-        if callable(selection):  # selection is callable
-            selection(X)
+    def _get_columns_from_selections(self, selections: Sequence, n_cols: int) -> set:
+        columns = set()
+
+        if type(selections) in (int, float, str):
+            columns.add(selections)
+
+        else:
+
+            for s in selections:
+                if type(s) == slice:
+                    for c in s.indices(n_cols):
+                        columns.add(c)
+                elif type(s) in (int, float, str):
+                    columns.add(s)
+                elif type(s) == list or type(s) == tuple or hasattr(s, "__iter__"):
+                    for c in s:
+                        columns.add(c)
+                else:
+                    columns.add(s)
+
+        return columns
+
+    def _get_selected_subset_of_data(self, X, selections):
+        if callable(selections):  # selection is callable
+            return selections(X)
         elif hasattr(X, "__dataframe__"):  # if X is pandas or polars dataframe
-            return X[selection]
+            n_cols = len(X.columns)
+            columns = self._get_columns_from_selections(selections, n_cols)
+            columns_as_list = list(columns)
+            return X[columns_as_list]
         else:  # is numpy array or list
             X = np.array(X)
-            return X[:, selection]
+            n_cols = X.shape[1]
+            columns = self._get_columns_from_selections(selections, n_cols)
+            columns_as_list = list(columns)
+            return X[:, columns_as_list]
 
     def _remove_selected_subset_of_data(self, X, selections):
 
@@ -361,19 +389,7 @@ class StrataColumnTransformer(
             X = np.array(X)
             n_cols = X.shape[1]
 
-        columns = set()
-
-        for s in selections:
-            if type(s) == slice:
-                for c in s.indices(n_cols):
-                    columns.add(c)
-            elif type(s) in (int, float, str):
-                columns.add(s)
-            elif type(s) == list or hasattr(s, "__iter__"):
-                for c in s:
-                    columns.add(c)
-            else:
-                columns.add(s)
+        columns = self._get_columns_from_selections(selections, n_cols)
 
         if type(X) == np.ndarray:
             if len(columns) > 0:
@@ -475,10 +491,39 @@ class StrataColumnTransformer(
         return X, times, events, strata
 
     def get_params(self, deep=True):
-        return self._get_params("_strata_transformers", deep=deep)
+        params = {}
+        params["strata_transformers"] = self.strata_transformers
+
+        for item_name, tranfomer, columns in self.strata_transformers:
+            for pram_key, pram_value in tranfomer.get_params(deep=True).items():
+                params["%s__%s" % (item_name, pram_key)] = pram_value
+            params["%s__%s" % (item_name, "columns")] = columns
+
+        return params
 
     def set_params(self, **kwargs):
-        self._set_params("_strata_transformers", **kwargs)
+
+        if "strata_transformers" in kwargs:
+            self.strata_transformers = kwargs["strata_transformers"]
+
+        item_names, _, _ = zip(*self.strata_transformers)
+
+        item_name_columns = [
+            "%s__%s" % (item_name, "columns") for item_name in item_names
+        ]
+
+        for name in list(kwargs.keys()):
+            if "__" not in name and name in item_names:
+                self._replace_estimator("strata_transformers", name, kwargs.pop(name))
+
+            elif name in item_name_columns:
+                index = item_name_columns.index(name)
+                item_name, tranfomer, _ = self.strata_transformers[index]
+                new_columns = kwargs.pop(name)
+                self.strata_transformers[index] = (item_name, tranfomer, new_columns)
+
+        super().set_params(**kwargs)
+
         return self
 
     def _sk_visual_block_(self):
@@ -495,16 +540,15 @@ class StrataColumnTransformer(
     @property
     def _strata_transformers(self):
         try:
-            return [(name, trans) for name, trans, _ in self.strata_transformers]
+            return [(name, trans, sel) for name, trans, sel in self.strata_transformers]
         except (TypeError, ValueError):
             return self.strata_transformers
 
     @_strata_transformers.setter
     def _strata_transformers(self, value):
         try:
-            self.transformers = [
-                (name, trans, col)
-                for ((name, trans), (_, _, col)) in zip(value, self.strata_transformers)
+            self.strata_transformers = [
+                (name, clone(trans), sel) for (name, trans, sel) in value
             ]
         except (TypeError, ValueError):
             self.strata_transformers = value
@@ -524,6 +568,14 @@ class StrataColumnTransformer(
                 raise TypeError(
                     "All strata transformers should implement fit, transform and fit_transform"
                 )
+
+    def __sklearn_clone__(self):
+
+        strata_transformers = [
+            (deepcopy(name), clone(trans), deepcopy(sel))
+            for (name, trans, sel) in self.strata_transformers
+        ]
+        return StrataColumnTransformer(strata_transformers)
 
 
 def make_strata_column_transformer(
