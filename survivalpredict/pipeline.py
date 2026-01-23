@@ -16,10 +16,11 @@ except ImportError:
     from sklearn.utils._estimator_html_repr import _VisualBlock
 
 from ._data_validation import _as_bool_np_array, _as_int, _as_int_np_array
-from ._estimator_utils import _get_estimator_names
+from ._estimator_utils import _get_estimator_names, _unpack_sklearn_pipeline_target
 from .strata_preprocessing import StrataColumnTransformer
 
 __all__ = [
+    "build_sklearn_pipeline_target",
     "SklearnSurvivalPipeline",
     "make_sklearn_survival_pipeline",
 ]
@@ -43,23 +44,6 @@ def build_sklearn_pipeline_target(times, events, strata=None):
     y["events"] = events
 
     return y
-
-
-def _unpack__sklearn_pipeline_target(
-    y: np.ndarray,
-) -> tuple[
-    np.ndarray[tuple[int], np.dtype[np.integer]],
-    np.ndarray[tuple[int], np.dtype[np.bool_]],
-    Optional[np.ndarray[tuple[int], np.dtype[np.integer]]],
-]:
-    times = _as_int_np_array(y["times"])
-    events = _as_bool_np_array(y["events"])
-
-    if "strata" in y.dtype.names:
-        strata = _as_int_np_array(y["strata"], "strata")
-        return times, events, strata
-    else:
-        return times, events, None
 
 
 def _fit_transform_sk_tranformer(
@@ -162,7 +146,7 @@ class SklearnSurvivalPipeline(_BaseComposition):
 
     @_fit_context(prefer_skip_nested_validation=True)
     def fit(self, X, y):
-        times, events, strata = _unpack__sklearn_pipeline_target(y)
+        times, events, strata = _unpack_sklearn_pipeline_target(y)
 
         self._fit(X, times, events, strata)
 
@@ -177,7 +161,7 @@ class SklearnSurvivalPipeline(_BaseComposition):
             raise ValueError(
                 "strata must be present if pipeline is fit with preexisting strata"
             )
-
+        
         max_time = _as_int(self.max_time, "max_time")
 
         X, strata = self._run_transformers(X, strata)
@@ -188,16 +172,19 @@ class SklearnSurvivalPipeline(_BaseComposition):
             return self._final_estimator.predict(X, max_time=max_time)
 
     def fit_predict(self, X, y):
-        times, events, strata = _unpack__sklearn_pipeline_target(y)
+        times, events, strata = _unpack_sklearn_pipeline_target(y)
 
         max_time = _as_int(self.max_time, "max_time")
 
         X, times, events, strata = self._fit(X, times, events, strata)
 
+        self.is_fitted_ = True
+
         if strata is not None:
             return self._final_estimator.predict(X, max_time=max_time, strata=strata)
         else:
             return self._final_estimator.predict(X, max_time=max_time)
+        
 
     def get_params(self, deep=True):
         return self._get_params("steps", deep=deep)

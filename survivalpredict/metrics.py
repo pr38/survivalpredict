@@ -1,15 +1,26 @@
 from typing import Optional
 
 import numpy as np
+from sklearn.metrics import make_scorer
 
+from ._data_validation import (
+    _as_bool_np_array,
+    _as_int,
+    _as_int_np_array,
+    _as_numeric_np_array,
+)
+from ._estimator_utils import _unpack_sklearn_pipeline_target
 from ._nonparametric import get_kaplan_meier_survival_curve_from_time_as_int_
-from ._data_validation import _as_bool_np_array, _as_int, _as_int_np_array, _as_numeric_np_array
 
 __all__ = [
     "brier_scores_ipcw",
     "integrated_brier_score_ipcw",
+    "integrated_brier_score_ipcw_sklearn_metric",
+    "integrated_brier_score_ipcw_sklearn_scorer",
     "brier_scores_administrative",
     "integrated_brier_score_administrative",
+    "integrated_brier_score_administrative_sklearn_metric",
+    "integrated_brier_score_administrative_sklearn_scorer",
 ]
 
 
@@ -129,10 +140,10 @@ def _integrated_brier_score_ipcw(
     )
 
     if average_by_time:
-        integrated_brier_score = np.trapz(bs, unique_times) / unique_times[-1]
+        integrated_brier_score = np.trapezoid(bs, unique_times) / unique_times[-1]
 
     else:
-        integrated_brier_score = np.trapz(bs, unique_times)
+        integrated_brier_score = np.trapezoid(bs, unique_times)
 
     return integrated_brier_score
 
@@ -171,6 +182,21 @@ def integrated_brier_score_ipcw(
         average_by_time,
         max_time,
     )
+
+
+def integrated_brier_score_ipcw_sklearn_metric(
+    y_true: np.ndarray, y_pred: np.ndarray[tuple[int, int], np.dtype[np.floating]]
+):
+    times, events, _ = _unpack_sklearn_pipeline_target(y_true)
+
+    max_time = y_pred.shape[1]
+
+    return integrated_brier_score_ipcw(y_pred, events, times, max_time=max_time)
+
+
+integrated_brier_score_ipcw_sklearn_scorer = make_scorer(
+    integrated_brier_score_ipcw_sklearn_metric, greater_is_better=False
+)
 
 
 def _brier_scores_administrative(
@@ -245,10 +271,10 @@ def _integrated_brier_score_administrative(
     bs = _brier_scores_administrative(predictions, events, times, max_time=max_time)
 
     if average_by_time:
-        integrated_brier_score = np.trapz(bs, unique_times) / unique_times[-1]
+        integrated_brier_score = np.trapezoid(bs, unique_times) / unique_times[-1]
 
     else:
-        integrated_brier_score = np.trapz(bs, unique_times)
+        integrated_brier_score = np.trapezoid(bs, unique_times)
 
     return integrated_brier_score
 
@@ -273,3 +299,20 @@ def integrated_brier_score_administrative(
     return _integrated_brier_score_administrative(
         predictions, events, times, max_time, average_by_time
     )
+
+
+def integrated_brier_score_administrative_sklearn_metric(
+    y_true: np.ndarray, y_pred: np.ndarray[tuple[int, int], np.dtype[np.floating]]
+):
+    times, events, _ = _unpack_sklearn_pipeline_target(y_true)
+
+    max_time = y_pred.shape[1]
+
+    return integrated_brier_score_administrative(
+        y_pred, events, times, max_time=max_time
+    )
+
+
+integrated_brier_score_administrative_sklearn_scorer = make_scorer(
+    integrated_brier_score_administrative_sklearn_metric, greater_is_better=False
+)
