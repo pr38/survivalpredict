@@ -2,11 +2,10 @@ import numpy as np
 
 
 def _get_breslow_base_hazard(
-    X,
+    risk,
     times,
     events,
     max_time,
-    coef,
 ):
     unique_times = np.arange(1, max_time + 1)
     rows_at_risk_at_time = times[:, np.newaxis] > unique_times
@@ -15,7 +14,6 @@ def _get_breslow_base_hazard(
         times.astype(np.int64), events, minlength=max_time + 1
     )[1:]
 
-    risk = np.exp(np.dot(X, coef))
     risk_per_time = np.dot(risk, rows_at_risk_at_time)
     base_hazard = np.divide(
         failure_per_unique_time,

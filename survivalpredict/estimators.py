@@ -12,6 +12,7 @@ from sklearn.utils.validation import check_is_fitted
 
 from ._base_hazard import _get_breslow_base_hazard
 from ._cox_ph_estimation import train_cox_ph_breslow, train_cox_ph_efron
+from ._cox_net_ph import train_cox_net_ph, get_relative_risk_from_cox_net_ph_weights
 from ._data_validation import (
     _as_int,
     _as_int_np_array,
@@ -168,12 +169,12 @@ class CoxProportionalHazard(_SurvivalPredictBase):
             self._breslow_base_hazard = np.zeros((n_strata, self._max_time_observed))
 
             for s_i in range(n_strata):
+                risk = np.exp(np.dot(X_strata[s_i], self.coef_))
                 self._breslow_base_hazard[s_i] = _get_breslow_base_hazard(
-                    X_strata[s_i],
+                    risk,
                     times_strata[s_i],
                     events_strata[s_i],
                     self._max_time_observed,
-                    self.coef_,
                 )
 
             self._breslow_base_survival = np.exp(
@@ -182,8 +183,9 @@ class CoxProportionalHazard(_SurvivalPredictBase):
         else:
             self._uses_strata = False
 
+            risk = np.exp(np.dot(X_strata[0], self.coef_))
             self._breslow_base_hazard = _get_breslow_base_hazard(
-                X, times, events, self._max_time_observed, self.coef_
+                risk, times, events, self._max_time_observed
             )
             self._breslow_base_survival = np.exp(-self._breslow_base_hazard.cumsum())
 
@@ -651,3 +653,143 @@ class KNeighborsSurvival(_SurvivalPredictBase):
         return build_kaplan_meier_survival_curve_from_neighbors_indexes(
             self._times_in_memmory, self._events_in_memmory, neighbors_indexes, max_time
         )
+
+
+class CoxNNetPH(_SurvivalPredictBase):
+
+    _parameter_constraints: dict = {
+        "hidden_layers": [list],
+        "alpha": [Interval(Real, 0, None, closed="left")],
+        "l1_ratio": [Interval(Real, 0, 1, closed="both")],
+        "init_dis": [StrOptions({"uniform", "normal"})],
+        "track_loss": ["boolean"],
+        "max_iter": [Interval(Integral, 1, None, closed="left")],
+        "gradient_updater": [
+            StrOptions({"adadelta", "adagrad", "adam", "adamax", "rmsprop"})
+        ],
+        "learning_rate": [Interval(Real, 0, None, closed="left")],
+        "beta1": [Interval(Real, 0, None, closed="left")],
+        "beta2": [Interval(Real, 0, None, closed="left")],
+        "rho": [Interval(Real, 0, None, closed="left")],
+        "decay": [Interval(Real, 0, None, closed="left")],
+    }
+
+    def __init__(
+        self,
+        hidden_layers: list[int] = [100],
+        alpha: float = 0.0,
+        l1_ratio: float = 0.5,
+        init_dis: Literal["uniform", "normal"] = "uniform",
+        track_loss=True,
+        max_iter=100,
+        gradient_updater: Literal[
+            "adadelta",
+            "adagrad",
+            "adam",
+            "adamax",
+            "rmsprop",
+        ] = "adam",
+        learning_rate: float = 0.01,
+        beta1: float = 0.9,
+        beta2: float = 0.999,
+        epsilon: float = 0.0000001,
+        rho: float = 0.95,
+        decay: float = 0.9,
+    ):
+        self.hidden_layers = hidden_layers
+        self.alpha = alpha
+        self.l1_ratio = l1_ratio
+        self.init_dis = init_dis
+        self.track_loss = track_loss
+        self.max_iter = max_iter
+        self.gradient_updater = gradient_updater
+        self.learning_rate = learning_rate
+        self.beta1 = beta1
+        self.beta2 = beta2
+        self.epsilon = epsilon
+        self.rho = rho
+        self.decay = decay
+
+    @_fit_context(prefer_skip_nested_validation=True)
+    def fit(self, X, times, events, check_input=True):
+        if check_input:
+            X, times, events = validate_survival_data(X, times, events)
+
+        for i in self.hidden_layers:
+            if type(i) != int:
+                raise ValueError("hidden_layers must be a list of ints")
+
+        self._max_time_observed = np.max(times)
+
+        if hasattr(self, "coef_"):
+            coef = self.coef_
+        else:
+            coef = None
+
+        coef, loss, losses_per_steps = train_cox_net_ph(
+            X,
+            times,
+            events,
+            self.hidden_layers,
+            coef,
+            self.alpha,
+            self.l1_ratio,
+            self.init_dis,
+            self.track_loss,
+            self.max_iter,
+            self.gradient_updater,
+            self.learning_rate,
+            self.beta1,
+            self.beta2,
+            self.epsilon,
+            self.rho,
+            self.decay,
+        )
+
+        self.coef_ = coef
+        self._loss = loss
+        self._losses_per_steps = losses_per_steps
+
+        risk = get_relative_risk_from_cox_net_ph_weights(X, self.coef_)
+
+        self._breslow_base_hazard = _get_breslow_base_hazard(
+            risk, times, events, self._max_time_observed
+        )
+
+        self._breslow_base_survival = np.exp(-self._breslow_base_hazard.cumsum())
+
+        self.is_fitted_ = True
+
+        return self
+
+    def predict(self, X, strata=None, max_time: Optional[int] = None):
+        check_is_fitted(self)
+
+        if max_time is None:
+            max_time = self._max_time_observed
+        else:
+            max_time = _as_int(max_time, "max_time")
+
+        X = np.array(X)
+
+        risk = get_relative_risk_from_cox_net_ph_weights(X, self.coef_)
+
+        base_survival = self._breslow_base_survival
+
+        if max_time < self._max_time_observed:
+            base_survival = base_survival[:max_time]
+        elif max_time > self._max_time_observed:
+            missing_len = max_time - self._max_time_observed
+
+            impulted_values = np.repeat(base_survival[-1], missing_len, axis=0)
+
+            base_survival = np.concat([base_survival, impulted_values])
+
+        return base_survival ** risk[:, None]
+
+    def predict_risk(self, X):
+        check_is_fitted(self)
+
+        X = np.array(X)
+
+        return get_relative_risk_from_cox_net_ph_weights(X, self.coef_)
