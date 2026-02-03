@@ -261,6 +261,27 @@ class ParametricDiscreteTimePH(_SurvivalPredictBase):
         "strata_uses_pytensor_scan": ["boolean"],
         "coef_prior_normal_sigma": [Interval(Real, 0, None, closed="left")],
         "base_harard_prior_exponential_lam": [Interval(Real, 0, None, closed="left")],
+        "scipy_minimize_method": [
+            StrOptions(
+                {
+                    "nelder-mead",
+                    "powell",
+                    "CG",
+                    "BFGS",
+                    "Newton-CG",
+                    "L-BFGS-B",
+                    "TNC",
+                    "COBYLA",
+                    "SLSQP",
+                    "trust-constr",
+                    "dogleg",
+                    "trust-ncg",
+                    "trust-exact",
+                    "trust-krylov",
+                    "basinhopping",
+                }
+            )
+        ],
     }
 
     def __init__(
@@ -282,6 +303,23 @@ class ParametricDiscreteTimePH(_SurvivalPredictBase):
         strata_uses_pytensor_scan: bool = False,
         coef_prior_normal_sigma: float = 1.5,
         base_harard_prior_exponential_lam: float = 5.0,
+        scipy_minimize_method: Literal[
+            "nelder-mead",
+            "powell",
+            "CG",
+            "BFGS",
+            "Newton-CG",
+            "L-BFGS-B",
+            "TNC",
+            "COBYLA",
+            "SLSQP",
+            "trust-constr",
+            "dogleg",
+            "trust-ncg",
+            "trust-exact",
+            "trust-krylov",
+            "basinhopping",
+        ] = "L-BFGS-B",
     ):
         self.distribution = distribution
         self.alpha = alpha
@@ -290,6 +328,7 @@ class ParametricDiscreteTimePH(_SurvivalPredictBase):
         self.strata_uses_pytensor_scan = strata_uses_pytensor_scan
         self.coef_prior_normal_sigma = coef_prior_normal_sigma
         self.base_harard_prior_exponential_lam = base_harard_prior_exponential_lam
+        self.scipy_minimize_method = scipy_minimize_method
 
     def _get_distribution_function_and_n_prams(self):
         if self.distribution == "chen":
@@ -343,6 +382,7 @@ class ParametricDiscreteTimePH(_SurvivalPredictBase):
                 self.strata_uses_pytensor_scan,
                 self.coef_prior_normal_sigma,
                 self.base_harard_prior_exponential_lam,
+                self.scipy_minimize_method,
             )
 
         else:

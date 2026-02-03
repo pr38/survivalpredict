@@ -130,7 +130,8 @@ def get_parametric_discrete_time_ph_model(
                 dims=("strata_ids", "base_hazard_params_ids"),
             )
             base_hazards, _ = pytensor.scan(
-                lambda a: base_hazard_pdf_callable(times_of_intrest_norm, a), base_hazard_params
+                lambda a: base_hazard_pdf_callable(times_of_intrest_norm, a),
+                base_hazard_params,
             )
 
             strata_pt = pm.Data("strata", strata, dims="row_ids")
@@ -206,6 +207,23 @@ def train_parametric_discrete_time_ph_model(
     strata_uses_pytensor_scan: bool = False,
     coef_prior_normal_sigma: Optional[float] = None,
     base_harard_prior_exponential_lam: Optional[float] = None,
+    scipy_minimize_method: Literal[
+        "nelder-mead",
+        "powell",
+        "CG",
+        "BFGS",
+        "Newton-CG",
+        "L-BFGS-B",
+        "TNC",
+        "COBYLA",
+        "SLSQP",
+        "trust-constr",
+        "dogleg",
+        "trust-ncg",
+        "trust-exact",
+        "trust-krylov",
+        "basinhopping",
+    ] = "L-BFGS-B",
 ) -> tuple[
     np.ndarray[tuple[int], np.dtype[np.float64]],
     np.ndarray[tuple[int], np.dtype[np.float64]]
@@ -234,6 +252,7 @@ def train_parametric_discrete_time_ph_model(
             mle = pmx.find_MAP(
                 compile_kwargs={"mode": pytensor_mode},
                 progressbar=False,
+                method=scipy_minimize_method,
             )
 
     coefs = mle.posterior["coefs"].values.flatten()
