@@ -10,6 +10,7 @@ def _as_numeric_np_array(a):
             dtype = np.float64
 
         a = a.astype(dtype)
+        a = np.ascontiguousarray(a)
         return a
     except:
         raise ValueError("the feature array must be numeric")

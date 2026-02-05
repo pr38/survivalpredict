@@ -50,42 +50,83 @@ def _reverse_cumsum_pt(a):
     return jnp.flip(jnp.cumsum(jnp.flip(a)))
 
 
-def _get_cox_net_ph_loss(
-    weights, X, events, time_return_inverse, n_unique_times, alpha=0.0, l1_ratio=0.5
+def get_init_weights(
+    input_n_cols: int,
+    hidden_layers: list[int],
+    init_dis: Literal["uniform", "normal"] = "uniform",
 ):
-    matrixs_for_reduce_dot = [X] + weights[:-1]
-    second_to_last_layer = reduce(
-        lambda a, b: relu_jax(
-            jnp.dot(
-                a,
-                b,
-            )
-        ),
-        matrixs_for_reduce_dot,
-    )
+    weight_matrix_shapes = list(pairwise([input_n_cols] + hidden_layers))
+    if init_dis == "uniform":
+        initializer = jax.nn.initializers.he_uniform()
+    else:
+        initializer = jax.nn.initializers.he_normal()
 
-    o = jnp.dot(second_to_last_layer, weights[-1])
+    jax_key = jax.random.key(np.random.randint(-10000, 10000))
 
-    risk_set = _reverse_cumsum_pt(
-        jnp.bincount(time_return_inverse, weights=jnp.exp(o), minlength=n_unique_times)
-    )[time_return_inverse]
+    weight_matrix_shapes.append((hidden_layers[-1], 1))
+    weights = [initializer(jax_key, shape=ws) for ws in weight_matrix_shapes]
+    weights[-1] = weights[-1].flatten()
+    return weights
+
+
+def _get_cox_net_ph_loss(
+    weights,
+    X_strata: list[np.ndarray[tuple[int, int], np.dtype[np.floating]]],
+    n_strata: int,
+    events_strata: list[np.ndarray[tuple[int], np.dtype[np.bool_]]],
+    time_return_inverse_strata: list[np.ndarray[tuple[int], np.dtype[np.integer]]],
+    n_unique_times_strata: list[int],
+    alpha=0.0,
+    l1_ratio=0.5,
+):
+    partial_log_likelihood_per_strata = []
 
     abs_weights_sum = reduce(lambda a, b: a + b, [jnp.sum(jnp.abs(w)) for w in weights])
     square_weights_sum = reduce(
         lambda a, b: a + b, [jnp.sum(jnp.square(w)) for w in weights]
     )
 
+    for s_i in range(n_strata):
+        X = X_strata[s_i]
+        time_return_inverse = time_return_inverse_strata[s_i]
+        n_unique_times = n_unique_times_strata[s_i]
+        events = events_strata[s_i]
+
+        matrixs_for_reduce_dot = [X] + weights[:-1]
+
+        second_to_last_layer = reduce(
+            lambda a, b: relu_jax(
+                jnp.dot(
+                    a,
+                    b,
+                )
+            ),
+            matrixs_for_reduce_dot,
+        )
+
+        o = jnp.dot(second_to_last_layer, weights[-1])
+        o_exp = jnp.exp(o)
+
+        risk_set = _reverse_cumsum_pt(
+            jnp.bincount(time_return_inverse, weights=o_exp, minlength=n_unique_times)
+        )[time_return_inverse]
+
+        loss = -jnp.sum(events * (o - jnp.log(risk_set)))
+
+        partial_log_likelihood_per_strata.append(loss)
+
     l1 = alpha * l1_ratio * abs_weights_sum
     l2 = 0.5 * alpha * (1.0 - l1_ratio) * square_weights_sum
 
-    loss = -jnp.sum(events * (o - jnp.log(risk_set)))
-    return loss + l1 + l2
+    return reduce(lambda a, b: a + b, partial_log_likelihood_per_strata + [l1, l2])
 
 
 def train_cox_net_ph(
-    X,
-    times,
-    events,
+    X_strata: list[np.ndarray[tuple[int, int], np.dtype[np.floating]]],
+    n_strata: int,
+    events_strata: list[np.ndarray[tuple[int], np.dtype[np.bool_]]],
+    time_return_inverse_strata: list[np.ndarray[tuple[int], np.dtype[np.integer]]],
+    n_unique_times_strata: list[int],
     hidden_layers: list[int],
     weights: Optional[list[np.ndarray]] = None,
     alpha: float = 0.0,
@@ -107,24 +148,8 @@ def train_cox_net_ph(
     rho: float = 0.95,
     decay: float = 0.9,
 ) -> tuple[list[np.ndarray], float, list[float]]:
-
     if weights is None:
-        # if not reusing weights, create inital weights
-        input_n_cols = X.shape[1]
-        weight_matrix_shapes = list(pairwise([input_n_cols] + hidden_layers))
-        if init_dis == "uniform":
-            initializer = jax.nn.initializers.he_uniform()
-        else:
-            initializer = jax.nn.initializers.he_normal()
-
-        jax_key = jax.random.key(np.random.randint(-10000, 10000))
-
-        weight_matrix_shapes.append((hidden_layers[-1], 1))
-        weights = [initializer(jax_key, shape=ws) for ws in weight_matrix_shapes]
-        weights[-1] = weights[-1].flatten()
-
-    unique_times, time_return_inverse = np.unique(times, return_inverse=True)
-    n_unique_times = len(unique_times)
+        weights = get_init_weights(X_strata[0].shape[1], hidden_layers, init_dis)
 
     grad_updater = get_gradient_updater(
         gradient_updater, learning_rate, beta1, beta2, epsilon, rho, decay
@@ -138,20 +163,42 @@ def train_cox_net_ph(
 
     for i in range(max_iter):
         jacobian = get_cox_net_ph_grad(
-            weights, X, events, time_return_inverse, n_unique_times, alpha, l1_ratio
+            weights,
+            X_strata,
+            n_strata,
+            events_strata,
+            time_return_inverse_strata,
+            n_unique_times_strata,
+            alpha,
+            l1_ratio,
         )
         updates, opt_state = grad_updater.update(jacobian, opt_state, weights)
         weights = optax.apply_updates(weights, updates)
 
         if track_loss:
             loss = _get_cox_net_ph_loss(
-                weights, X, events, time_return_inverse, n_unique_times, alpha, l1_ratio
+                weights,
+                X_strata,
+                n_strata,
+                events_strata,
+                time_return_inverse_strata,
+                n_unique_times_strata,
+                alpha,
+                l1_ratio,
             ).item()
+
             losses_per_steps.append(loss)
 
     if loss is None:
         loss = _get_cox_net_ph_loss(
-            weights, X, events, time_return_inverse, n_unique_times, alpha, l1_ratio
+            weights,
+            X_strata,
+            n_strata,
+            events_strata,
+            time_return_inverse_strata,
+            n_unique_times_strata,
+            alpha,
+            l1_ratio,
         ).item()
 
     weights_np = [np.array(w) for w in weights]

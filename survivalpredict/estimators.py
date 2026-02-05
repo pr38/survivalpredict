@@ -45,6 +45,7 @@ __all__ = [
     "ParametricDiscreteTimePH",
     "KaplanMeierSurvivalEstimator",
     "KNeighborsSurvival",
+    "CoxNNetPH",
 ]
 
 
@@ -751,9 +752,15 @@ class CoxNNetPH(_SurvivalPredictBase):
         self.decay = decay
 
     @_fit_context(prefer_skip_nested_validation=True)
-    def fit(self, X, times, events, check_input=True):
+    def fit(self, X, times, events, strata=None, check_input=True):
         if check_input:
             X, times, events = validate_survival_data(X, times, events)
+
+            if strata is not None:
+                strata = _as_int_np_array(strata)
+                self._uses_strata = True
+            else:
+                self._uses_strata = False
 
         for i in self.hidden_layers:
             if type(i) != int:
@@ -761,15 +768,28 @@ class CoxNNetPH(_SurvivalPredictBase):
 
         self._max_time_observed = np.max(times)
 
+        (
+            n_strata,
+            seen_strata,
+            X_strata,
+            times_strata,
+            events_strata,
+            time_return_inverse_strata,
+            n_unique_times_strata,
+            _,
+        ) = preprocess_data_for_cox_ph(X, times, events, strata)
+
         if hasattr(self, "coef_"):
             coef = self.coef_
         else:
             coef = None
 
         coef, loss, losses_per_steps = train_cox_net_ph(
-            X,
-            times,
-            events,
+            X_strata,
+            n_strata,
+            events_strata,
+            time_return_inverse_strata,
+            n_unique_times_strata,
             self.hidden_layers,
             coef,
             self.alpha,
@@ -790,13 +810,32 @@ class CoxNNetPH(_SurvivalPredictBase):
         self._loss = loss
         self._losses_per_steps = losses_per_steps
 
-        risk = get_relative_risk_from_cox_net_ph_weights(X, self.coef_)
+        if self._uses_strata:
+            self.seen_strata = seen_strata
 
-        self._breslow_base_hazard = _get_breslow_base_hazard(
-            risk, times, events, self._max_time_observed
-        )
+            self._breslow_base_hazard = np.zeros((n_strata, self._max_time_observed))
 
-        self._breslow_base_survival = np.exp(-self._breslow_base_hazard.cumsum())
+            for s_i in range(n_strata):
+                risk = get_relative_risk_from_cox_net_ph_weights(
+                    X_strata[s_i], self.coef_
+                )
+                self._breslow_base_hazard[s_i] = _get_breslow_base_hazard(
+                    risk,
+                    times_strata[s_i],
+                    events_strata[s_i],
+                    self._max_time_observed,
+                )
+
+            self._breslow_base_survival = np.exp(
+                -self._breslow_base_hazard.cumsum(axis=1)
+            )
+
+        else:
+            risk = get_relative_risk_from_cox_net_ph_weights(X, self.coef_)
+            self._breslow_base_hazard = _get_breslow_base_hazard(
+                risk, times, events, self._max_time_observed
+            )
+            self._breslow_base_survival = np.exp(-self._breslow_base_hazard.cumsum())
 
         self.is_fitted_ = True
 
@@ -810,22 +849,50 @@ class CoxNNetPH(_SurvivalPredictBase):
         else:
             max_time = _as_int(max_time, "max_time")
 
-        X = np.array(X)
+        X = _as_numeric_np_array(X)
 
         risk = get_relative_risk_from_cox_net_ph_weights(X, self.coef_)
 
-        base_survival = self._breslow_base_survival
+        if self._uses_strata:
+            if strata is None:
+                raise ValueError(
+                    "strata must be present if model is trained with strata"
+                )
 
-        if max_time < self._max_time_observed:
-            base_survival = base_survival[:max_time]
-        elif max_time > self._max_time_observed:
-            missing_len = max_time - self._max_time_observed
+            strata, has_unseen_strata = map_new_strata(strata, self.seen_strata)
 
-            impulted_values = np.repeat(base_survival[-1], missing_len, axis=0)
+            if has_unseen_strata:
+                raise ValueError("predict data has unseen strata")
 
-            base_survival = np.concat([base_survival, impulted_values])
+            base_survival = self._breslow_base_survival
 
-        return base_survival ** risk[:, None]
+            if max_time < self._max_time_observed:
+                base_survival = base_survival[:, :max_time]
+            elif max_time > self._max_time_observed:
+                missing_len = max_time - self._max_time_observed
+
+                impulted_values = np.repeat(
+                    base_survival[:, -1][np.newaxis], missing_len, axis=0
+                ).T
+
+                base_survival = np.hstack([base_survival, impulted_values])
+
+            return base_survival[strata] ** risk[:, None]
+
+        else:
+
+            base_survival = self._breslow_base_survival
+
+            if max_time < self._max_time_observed:
+                base_survival = base_survival[:max_time]
+            elif max_time > self._max_time_observed:
+                missing_len = max_time - self._max_time_observed
+
+                impulted_values = np.repeat(base_survival[-1], missing_len, axis=0)
+
+                base_survival = np.concat([base_survival, impulted_values])
+
+            return base_survival ** risk[:, None]
 
     def predict_risk(self, X):
         check_is_fitted(self)
