@@ -37,9 +37,6 @@ def _brier_scores_ipcw(
         times_for_ipcw = times
         events_for_ipcw = events
 
-    if predictions.shape[1] > max_time:
-        predictions = predictions[:, max_time]
-
     times_index = times - 1
 
     n_row = times.shape[0]
@@ -47,11 +44,14 @@ def _brier_scores_ipcw(
     if max_time is None:
         max_time = int(max([times_for_ipcw.max(), times.max()]))
 
+    if predictions.shape[1] > max_time:
+        predictions = predictions[:, max_time]
+
     unique_times = np.arange(1, max_time + 1)
 
     kaplan_meier_survival_curve_inverted_event = (
         get_kaplan_meier_survival_curve_from_time_as_int_(
-            1 - events_for_ipcw, times_for_ipcw, max_time
+            np.logical_not(events_for_ipcw), times_for_ipcw, max_time
         )
     )
 
