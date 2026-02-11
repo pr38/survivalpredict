@@ -8,10 +8,13 @@ authors = [
      {name = "Pouya Rezvanipour", email = "pouyar3@yahoo.com"},
 ]
 dependencies = [
+    "jax>=0.6.2",
     "numba>=0.63.1",
-    "numpy>=2.3.5",
-    "pymc>=5.26.1",
-    "pymc-extras>=0.5.0",
-    "pytensor[jax]>=2.35.1",
-    "scikit-learn>=1.8.0",
+    "numpy>=2.2.6",
+    "optax>=0.2.7",
+    "pymc>=5.25.1",
+    "pymc-extras>=0.2.7",
+    "pytensor[all,jax,numba]>=2.31.7",
+    "scikit-learn>=1.7.2",
+    "scipy>=1.15.3",
 ]

@@ -46,7 +46,7 @@ def relu_jax(x):
     return jnp.where(x < 0, 0, x)
 
 
-def _reverse_cumsum_pt(a):
+def _reverse_cumsum_jax(a):
     return jnp.flip(jnp.cumsum(jnp.flip(a)))
 
 
@@ -107,7 +107,7 @@ def _get_cox_net_ph_loss(
         o = jnp.dot(second_to_last_layer, weights[-1])
         o_exp = jnp.exp(o)
 
-        risk_set = _reverse_cumsum_pt(
+        risk_set = _reverse_cumsum_jax(
             jnp.bincount(time_return_inverse, weights=o_exp, minlength=n_unique_times)
         )[time_return_inverse]
 
