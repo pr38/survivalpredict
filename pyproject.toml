@@ -1,7 +1,7 @@
 [project]
 name = "survivalpredict"
 version = "0.0.1"
-description = "Predicting survival for out-of-sample data, using a scikit-learn-like api."
+description = "Predicting survival for out-of-sample data, with a scikit-learn-like api."
 readme = "README.md"
 requires-python = ">=3.10"
 authors = [
@@ -15,6 +15,6 @@ dependencies = [
     "pymc>=5.25.1",
     "pymc-extras>=0.2.7",
     "pytensor[jax,numba]>=2.31.7",
-    "scikit-learn>=1.7.2",
+    "scikit-learn>=1.4.0",
     "scipy>=1.15.3",
 ]
