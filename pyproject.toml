@@ -3,7 +3,7 @@ name = "survivalpredict"
 version = "0.0.1"
 description = "Predicting survival for out-of-sample data, with a scikit-learn-like api."
 readme = "README.md"
-requires-python = ">=3.10"
+requires-python = ">=3.11"
 authors = [
      {name = "Pouya Rezvanipour", email = "pouyar3@yahoo.com"},
 ]
@@ -18,3 +18,12 @@ dependencies = [
     "scikit-learn>=1.4.0",
     "scipy>=1.15.3",
 ]
+
+[tool.setuptools.packages.find]
+where = ["survivalpredict"]
+
+[tool.setuptools]
+include-package-data = true
+
+[tool.setuptools.package-data]
+datasets = ["*.txt"]
