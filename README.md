@@ -1,6 +1,6 @@
 # SurvivalPredict
 
-A python packaged centered around Survival Analysis Statistical Learning, meaning the prediction of survival acoss time.
+A python packaged centered around Survival Analysis Statistical Learning, for prediction of survival acoss time.
 
 WIP. A pypi release should be released soon. In the meantime, the code in this repo can be installed via `pip install git+https://github.com/pr38/survivalpredict`. Ideally, before the first pypi release, some left-censoring support, docstrings, example notebooks, as well as implementations for Aalen’s additive hazards' and 'multi-task logistic regression' models should be added. With the goal of adding sparse data support as well as  tree-based, ensemble, and exotic neural network models further down the line. 
 
@@ -24,7 +24,7 @@ Below are the estimators implemented in the `survivalpredict.estimators` sub-mod
     </tr>
     <tr>
         <td>ParametricDiscreteTimePH</td>
-        <td> A fully parametric linear hazards model. Chen, weibull, log_normal, log_logistic, gompertz and additive_chen_weibull baseline hazards are available as hyperparameters. Maximum likelihood is estimated using a survival distinct time likelihood with censorship. Implemented with Pymc/Pytensor, with either a Jax or numba backend.</td>
+        <td> A fully parametric linear hazards model. Chen, weibull, log_normal, log_logistic, gompertz, gamma and additive_chen_weibull baseline hazards are available as hyperparameters. Maximum likelihood is estimated using a survival distinct time likelihood with censorship. Implemented with Pymc/Pytensor, with either a Jax or numba backend.</td>
         <th>Yes</th>
     </tr>
     <tr>

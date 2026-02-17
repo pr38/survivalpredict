@@ -22,6 +22,7 @@ from ._data_validation import (
 from ._discrete_time_ph_estimation import (
     _additive_chen_weibull_pdf,
     _chen_pdf,
+    _gamma_pdf,
     _gompertz_pdf,
     _log_logistic_pdf,
     _log_normal_pdf,
@@ -251,6 +252,7 @@ class ParametricDiscreteTimePH(_SurvivalPredictBase):
                     "weibull",
                     "log_normal",
                     "log_logistic",
+                    "gamma",
                     "gompertz",
                     "additive_chen_weibull",
                 }
@@ -294,6 +296,7 @@ class ParametricDiscreteTimePH(_SurvivalPredictBase):
                 "weibull",
                 "log_normal",
                 "log_logistic",
+                "gamma",
                 "gompertz",
                 "additive_chen_weibull",
             ]
@@ -340,6 +343,8 @@ class ParametricDiscreteTimePH(_SurvivalPredictBase):
             return _log_normal_pdf, 2
         elif self.distribution == "log_logistic":
             return _log_logistic_pdf, 2
+        elif self.distribution == "gamma":
+            return _gamma_pdf, 2
         elif self.distribution == "gompertz":
             return _gompertz_pdf, 2
         elif self.distribution == "additive_chen_weibull":

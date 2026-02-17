@@ -1,11 +1,12 @@
-from typing import Any, Callable, Literal, Optional
 import warnings
+from typing import Any, Callable, Literal, Optional
 
 import numpy as np
 import pymc as pm  # type: ignore
 import pymc_extras as pmx  # type: ignore
-import pytensor.tensor as pt
 import pytensor
+import pytensor.tensor as pt
+import scipy
 from pytensor.tensor.variable import TensorVariable
 
 
@@ -56,6 +57,17 @@ def _additive_chen_weibull_pdf(x, params):
     return params[0] * params[1] * x ** (params[1] - 1) + params[2] * params[3] * (
         params[2] * x
     ) ** (params[3] - 1)
+
+
+def _gamma_pdf(x, params):
+    if type(params) == pt.variable.TensorVariable:
+        gamma_a = pt.gamma(params[0])
+    else:
+        gamma_a = scipy.special.gamma(params[0])
+
+    return (x ** (params[0] - 1) * np.exp(-x / params[1])) / (
+        gamma_a * (params[1] ** params[0])
+    )
 
 
 def get_parametric_discrete_time_ph_model(
