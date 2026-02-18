@@ -10,6 +10,10 @@ from sklearn.neighbors._base import VALID_METRICS as VALID_METRICS_KNN
 from sklearn.utils._param_validation import Interval, StrOptions
 from sklearn.utils.validation import check_is_fitted
 
+from ._allen_additive import (
+    _estimate_allen_additive_hazard_time_weights,
+    _generate_hazards_at_times_from_allen_additive_hazard_weights,
+)
 from ._base_hazard import _get_breslow_base_hazard
 from ._cox_ph_estimation import train_cox_ph_breslow, train_cox_ph_efron
 from ._cox_net_ph import train_cox_net_ph, get_relative_risk_from_cox_net_ph_weights
@@ -905,3 +909,37 @@ class CoxNNetPH(_SurvivalPredictBase):
         X = np.array(X)
 
         return get_relative_risk_from_cox_net_ph_weights(X, self.coef_)
+
+
+class AalenAdditiveHazard(_SurvivalPredictBase):
+
+    def fit(self, X, times, events, check_input=True):
+        if check_input:
+            X, times, events = validate_survival_data(X, times, events)
+
+        self._max_time_observed = int(np.max(times))
+
+        hazard_weights, hazard_weights_times = (
+            _estimate_allen_additive_hazard_time_weights(X, times, events)
+        )
+
+        self._hazard_weights = hazard_weights
+        self._hazard_weights_times = hazard_weights_times
+
+        self.is_fitted_ = True
+
+        return self
+
+    def predict(self, X, max_time: Optional[int] = None):
+        check_is_fitted(self)
+
+        if max_time is None:
+            max_time = self._max_time_observed
+        else:
+            max_time = _as_int(max_time, "max_time")
+
+        hazards = _generate_hazards_at_times_from_allen_additive_hazard_weights(
+            X, self._hazard_weights, self._hazard_weights_times, max_time
+        )
+
+        return np.exp(-hazards.cumsum(axis=1))
