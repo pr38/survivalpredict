@@ -31,13 +31,18 @@ def _unpack_sklearn_pipeline_target(
     np.ndarray[tuple[int], np.dtype[np.integer]],
     np.ndarray[tuple[int], np.dtype[np.bool_]],
     Optional[np.ndarray[tuple[int], np.dtype[np.integer]]],
+    Optional[np.ndarray[tuple[int], np.dtype[np.integer]]],
 ]:
     "Sister function for build_sklearn_pipeline_target"
     times = _as_int_np_array(y["times"])
     events = _as_bool_np_array(y["events"])
+    strata = None
+    times_start = None
 
     if "strata" in y.dtype.names:
         strata = _as_int_np_array(y["strata"], "strata")
-        return times, events, strata
-    else:
-        return times, events, None
+
+    if "times_start" in y.dtype.names:
+        times_start = _as_int_np_array(y["times_start"], "times_start")
+
+    return times, events, strata, times_start

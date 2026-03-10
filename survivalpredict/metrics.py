@@ -187,7 +187,7 @@ def integrated_brier_score_ipcw(
 def integrated_brier_score_ipcw_sklearn_metric(
     y_true: np.ndarray, y_pred: np.ndarray[tuple[int, int], np.dtype[np.floating]]
 ):
-    times, events, _ = _unpack_sklearn_pipeline_target(y_true)
+    times, events, _, _ = _unpack_sklearn_pipeline_target(y_true)
 
     max_time = y_pred.shape[1]
 
@@ -320,12 +320,12 @@ def integrated_brier_score_administrative(
 def integrated_brier_score_administrative_sklearn_metric(
     y_true: np.ndarray, y_pred: np.ndarray[tuple[int, int], np.dtype[np.floating]]
 ):
-    times, events, _ = _unpack_sklearn_pipeline_target(y_true)
+    times, events, _, times_start = _unpack_sklearn_pipeline_target(y_true)
 
     max_time = y_pred.shape[1]
 
     return integrated_brier_score_administrative(
-        y_pred, times, events, max_time=max_time
+        y_pred, times, events, max_time=max_time, times_start=times_start
     )
 
 
