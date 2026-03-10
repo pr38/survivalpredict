@@ -22,6 +22,7 @@ from ._data_validation import (
     _as_int_np_array,
     _as_numeric_np_array,
     validate_survival_data,
+    validate_times_start_array,
 )
 from ._discrete_time_ph_estimation import (
     _additive_chen_weibull_pdf,
@@ -51,6 +52,7 @@ __all__ = [
     "KaplanMeierSurvivalEstimator",
     "KNeighborsSurvival",
     "CoxNNetPH",
+    "AalenAdditiveHazard",
 ]
 
 
@@ -98,7 +100,7 @@ class CoxProportionalHazard(_SurvivalPredictBase):
             X, times, events = validate_survival_data(X, times, events)
 
             if strata is not None:
-                strata = _as_int_np_array(strata)
+                strata = _as_int_np_array(strata, "strata")
 
         self._max_time_observed = np.max(times)
 
@@ -202,7 +204,7 @@ class CoxProportionalHazard(_SurvivalPredictBase):
         check_is_fitted(self)
 
         if strata is not None:
-            strata = _as_int_np_array(strata)
+            strata = _as_int_np_array(strata, "strata")
 
         if max_time is None:
             max_time = self._max_time_observed
@@ -264,7 +266,7 @@ class ParametricDiscreteTimePH(_SurvivalPredictBase):
         ],
         "alpha": [Interval(Real, 0, None, closed="left")],
         "l1_ratio": [Interval(Real, 0, 1, closed="both")],
-        "pytensor_mode": [StrOptions({"JAX", "NUMBA"})],
+        "pytensor_mode": [StrOptions({"JAX", "NUMBA", "FAST_COMPILE"})],
         "strata_uses_pytensor_scan": ["boolean"],
         "coef_prior_normal_sigma": [Interval(Real, 0, None, closed="left")],
         "base_harard_prior_exponential_lam": [Interval(Real, 0, None, closed="left")],
@@ -307,7 +309,7 @@ class ParametricDiscreteTimePH(_SurvivalPredictBase):
         ] = "chen",
         alpha: float = 0.0,
         l1_ratio: float = 0.5,
-        pytensor_mode: Literal["JAX", "NUMBA"] = "NUMBA",
+        pytensor_mode: Literal["JAX", "NUMBA", "FAST_COMPILE"] = "JAX",
         strata_uses_pytensor_scan: bool = False,
         coef_prior_normal_sigma: float = 1.5,
         base_harard_prior_exponential_lam: float = 5.0,
@@ -338,7 +340,7 @@ class ParametricDiscreteTimePH(_SurvivalPredictBase):
         self.base_harard_prior_exponential_lam = base_harard_prior_exponential_lam
         self.scipy_minimize_method = scipy_minimize_method
 
-    def _get_distribution_function_and_n_prams(self):
+    def _get_distribution_function_and_n_prams(self) -> tuple[Callable, int]:
         if self.distribution == "chen":
             return _chen_pdf, 2
         elif self.distribution == "weibull":
@@ -357,12 +359,20 @@ class ParametricDiscreteTimePH(_SurvivalPredictBase):
             raise ValueError(f"{self.distribution} distribution is not yet implemented")
 
     @_fit_context(prefer_skip_nested_validation=True)
-    def fit(self, X, times, events, strata=None, check_input=True):
+    def fit(
+        self,
+        X: np.ndarray[tuple[int, int], np.dtype[np.float64]],
+        times: np.ndarray[tuple[int], np.dtype[np.int64]],
+        events: np.ndarray[tuple[int], np.dtype[np.bool_]],
+        strata: Optional[np.ndarray[tuple[int], np.dtype[np.int64]]] = None,
+        check_input: bool = True,
+        times_start: Optional[np.ndarray[tuple[int], np.dtype[np.int64]]] = None,
+    ):
 
         if check_input:
             X, times, events = validate_survival_data(X, times, events)
             if strata is not None:
-                strata = _as_int_np_array(strata)
+                strata = _as_int_np_array(strata, "strata")
 
         self._max_time_observed = np.max(times)
 
@@ -393,6 +403,7 @@ class ParametricDiscreteTimePH(_SurvivalPredictBase):
                 self.coef_prior_normal_sigma,
                 self.base_harard_prior_exponential_lam,
                 self.scipy_minimize_method,
+                times_start=times_start,
             )
 
         else:
@@ -408,6 +419,7 @@ class ParametricDiscreteTimePH(_SurvivalPredictBase):
                 self.pytensor_mode,
                 coef_prior_normal_sigma=self.coef_prior_normal_sigma,
                 base_harard_prior_exponential_lam=self.base_harard_prior_exponential_lam,
+                times_start=times_start,
             )
 
         self.coef_ = coefs
@@ -421,11 +433,16 @@ class ParametricDiscreteTimePH(_SurvivalPredictBase):
         self.is_fitted_ = True
         return self
 
-    def predict(self, X, strata=None, max_time: Optional[int] = None):
+    def predict(
+        self,
+        X: np.ndarray[tuple[int, int], np.dtype[np.float64]],
+        strata=None,
+        max_time: Optional[int] = None,
+    ):
         check_is_fitted(self)
 
         if strata is not None:
-            strata = _as_int_np_array(strata)
+            strata = _as_int_np_array(strata, "strata")
 
         if max_time is None:
             max_time = self._max_time_observed
@@ -453,7 +470,7 @@ class ParametricDiscreteTimePH(_SurvivalPredictBase):
             strata,
         )
 
-    def predict_risk(self, X):
+    def predict_risk(self, X: np.ndarray[tuple[int, int], np.dtype[np.float64]]):
         check_is_fitted(self)
 
         return np.exp(np.dot(X, self.coef_))
@@ -484,20 +501,25 @@ class ParametricDiscreteTimePH(_SurvivalPredictBase):
 
     def get_pymc_model(
         self,
-        X,
-        times,
-        events,
+        X: np.ndarray[tuple[int, int], np.dtype[np.float64]],
+        times: np.ndarray[tuple[int], np.dtype[np.int64]],
+        events: np.ndarray[tuple[int], np.dtype[np.bool_]],
         max_time: Optional[int] = None,
         labes_names: list[str] | np.ndarray[tuple[int], np.dtype[Any]] | None = None,
         strata: Optional[np.ndarray[tuple[int], np.dtype[np.int64]]] = None,
         strata_names: list[str] | np.ndarray[tuple[int], np.dtype[Any]] | None = None,
+        times_start: Optional[np.ndarray[tuple[int], np.dtype[np.int64]]] = None,
     ):
         base_hazard_pdf_callable, n_base_hazard_prams = (
             self._get_distribution_function_and_n_prams()
         )
 
+        X, times, events = validate_survival_data(X, times, events)
+        if strata is not None:
+            strata = _as_int_np_array(strata, "strata")
+
         if max_time is None:
-            if self.is_fitted_:
+            if hasattr(self, "is_fitted_"):
                 max_time = self._max_time_observed
             else:
                 max_time = int(np.max(times))
@@ -508,6 +530,11 @@ class ParametricDiscreteTimePH(_SurvivalPredictBase):
             seen_strata = np.unique(strata)
             n_strata = len(seen_strata)
             strata, _ = map_new_strata(strata, seen_strata)
+        else:
+            n_strata = None
+
+        if times_start is not None:
+            times_start = validate_times_start_array(times_start, times)
 
         return get_parametric_discrete_time_ph_model(
             X,
@@ -525,6 +552,7 @@ class ParametricDiscreteTimePH(_SurvivalPredictBase):
             self.strata_uses_pytensor_scan,
             coef_prior_normal_sigma=self.coef_prior_normal_sigma,
             base_harard_prior_exponential_lam=self.base_harard_prior_exponential_lam,
+            times_start=times_start,
         )
 
 
@@ -536,7 +564,7 @@ class KaplanMeierSurvivalEstimator(_SurvivalPredictBase):
             X, times, events = validate_survival_data(X, times, events)
 
             if strata is not None:
-                strata = _as_int_np_array(strata)
+                strata = _as_int_np_array(strata, "strata")
 
         self._max_time_observed = int(np.max(times))
 
@@ -579,7 +607,7 @@ class KaplanMeierSurvivalEstimator(_SurvivalPredictBase):
         check_is_fitted(self)
 
         if strata is not None:
-            strata = _as_int_np_array(strata)
+            strata = _as_int_np_array(strata, "strata")
 
         if max_time is None:
             max_time = self._max_time_observed
@@ -700,6 +728,8 @@ class KNeighborsSurvival(_SurvivalPredictBase):
 
         neighbors_indexes = self._nearestneighbors.kneighbors(X, return_distance=False)
 
+        X = _as_numeric_np_array(X)
+
         return build_kaplan_meier_survival_curve_from_neighbors_indexes(
             self._times_in_memmory, self._events_in_memmory, neighbors_indexes, max_time
         )
@@ -766,7 +796,7 @@ class CoxNNetPH(_SurvivalPredictBase):
             X, times, events = validate_survival_data(X, times, events)
 
             if strata is not None:
-                strata = _as_int_np_array(strata)
+                strata = _as_int_np_array(strata, "strata")
                 self._uses_strata = True
             else:
                 self._uses_strata = False
@@ -913,14 +943,34 @@ class CoxNNetPH(_SurvivalPredictBase):
 
 class AalenAdditiveHazard(_SurvivalPredictBase):
 
-    def fit(self, X, times, events, check_input=True):
+    _parameter_constraints: dict = {
+        "clip_hazards": ["boolean"],
+    }
+
+    def __init__(self, clip_hazards: bool = True):
+        self.clip_hazards = clip_hazards
+
+    @_fit_context(prefer_skip_nested_validation=True)
+    def fit(
+        self,
+        X: np.ndarray[tuple[int, int], np.dtype[np.float64]],
+        times: np.ndarray[tuple[int], np.dtype[np.int64]],
+        events: np.ndarray[tuple[int], np.dtype[np.int64]],
+        check_input: bool = True,
+        times_start: Optional[np.ndarray[tuple[int], np.dtype[np.int64]]] = None,
+    ):
         if check_input:
             X, times, events = validate_survival_data(X, times, events)
+
+        if times_start is None:
+            times_start = np.zeros_like(times, dtype=np.int64)
+        else:
+            times_start = validate_times_start_array(times_start, times)
 
         self._max_time_observed = int(np.max(times))
 
         hazard_weights, hazard_weights_times = (
-            _estimate_allen_additive_hazard_time_weights(X, times, events)
+            _estimate_allen_additive_hazard_time_weights(X, times, events, times_start)
         )
 
         self._hazard_weights = hazard_weights
@@ -933,6 +983,8 @@ class AalenAdditiveHazard(_SurvivalPredictBase):
     def predict(self, X, max_time: Optional[int] = None):
         check_is_fitted(self)
 
+        X = _as_numeric_np_array(X)
+
         if max_time is None:
             max_time = self._max_time_observed
         else:
@@ -941,5 +993,8 @@ class AalenAdditiveHazard(_SurvivalPredictBase):
         hazards = _generate_hazards_at_times_from_allen_additive_hazard_weights(
             X, self._hazard_weights, self._hazard_weights_times, max_time
         )
+
+        if self.clip_hazards:
+            hazards = np.clip(hazards,0.,1.)
 
         return np.exp(-hazards.cumsum(axis=1))

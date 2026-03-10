@@ -1,19 +1,19 @@
 # SurvivalPredict
 
-A python packaged centered around Survival Analysis Statistical Learning, for prediction of survival acoss time.
+A python packaged centered around Survival Analysis Statistical Learning, for predicting survival curves. The code in this repo is lovingly written without any schocrastic generative processes.
 
-WIP. A pypi release should be released soon. In the meantime, the code in this repo can be installed via `pip install git+https://github.com/pr38/survivalpredict`. Ideally, before the first pypi release, some left-censoring support, docstrings, example notebooks, as well as implementations for 'multi-task logistic regression' model should be added. With the goal of adding sparse data support as well as  tree-based, ensemble, and exotic neural network  further down the line. 
+WIP. A pypi release should be released soon. In the meantime, the code in this repo can be installed via `pip install git+https://github.com/pr38/survivalpredict`. Ideally, before the first pypi release docstrings and example notebooks will be added. With the goal of finishing left-censoring support, sparse data support as well as  tree-based, ensemble, and exotic neural network  models further down the line. 
 
 
-models
 ## Estimators
-Below are the estimators implemented in the `survivalpredict.estimators` sub-module
+The estimators implemented in the `survivalpredict.estimators` sub-module.
 
 <table>
     <tr>
         <th>Estimators</th>
         <th>Description</th>
         <th>Stratifiable</th>
+        <th>Left-censorable</th>
     </tr>
     <tr>
         <td>CoxProportionalHazard</td>
@@ -21,32 +21,38 @@ Below are the estimators implemented in the `survivalpredict.estimators` sub-mod
         Cox proportional hazards model is a linear semi-parametric relative risk model. A staple of survival analysis. Fast and efficient to train. Survivalpredict's implementation has many optimizations and is up to 10x to 20x faster than other implementations available to Python. Both breslow and efron ties are supported. Currently only the breslow base hazard is avalable.
         </td>
         <td> Yes</td>
+        <td>No/todo</td>
     </tr>
     <tr>
         <td>ParametricDiscreteTimePH</td>
         <td> A fully parametric linear hazards model. Chen, weibull, log_normal, log_logistic, gompertz, gamma and additive_chen_weibull baseline hazards are available as hyperparameters. Maximum likelihood is estimated using a survival distinct time likelihood with censorship. Implemented with Pymc/Pytensor, with either a Jax or numba backend.</td>
-        <td> Yes</td>
+        <td>Yes</td>
+        <td>Yes</td>
     </tr>
     <tr>
         <td>KaplanMeierSurvivalEstimator</td>
         <td> Univariate non-parametric survival curve. Useful as a baseline/dummy estimator.</td>
         <td>Accepts strata, but builds a survival curve for each strata. </td>
+        <td>N/A</td>
     </tr>
         <tr>
         <td>KNeighborsSurvival</td>
         <td>K nearest neighbors for survival. An in-memory non-parametric model that builds a Kaplan-Meier survival curve based on neighbors.
         </td>
-        <td>No </td>
+        <td>No</td>
+        <td>No</td>
     </tr>
         <td>CoxNNetPH</td>
         <td> A neural network model for estimating relative risk. Cox proportional hazards model's 'negative log likelihood for Breslow ties' is used as a loss function. Breslow's base hazard for relative risk is used to estimate survival across time. Implemented using Jax.  </td>
         <td>Yes</td>
+        <td>No/todo</td>
     </tr>
         <tr>
         <td>AalenAdditiveHazard</td>
         <td> Linear multivariate non-parametric estimation of hazard. Allows for each interval of time and feature to have an associated coefficient, allowing for the effects of features to change over time.
         </td>
-        <td>No </td>
+        <td>No</td>
+        <td>Yes</td>
 </table>
 
 
@@ -55,7 +61,6 @@ Below are the estimators implemented in the `survivalpredict.estimators` sub-mod
 
 Survivalpredict focuses on metrics that directly measure prediction performance. Hence, the `survivalpredict.metrics` module intentionally excludes metrics based on ranking relative risk(i.e., ' c-index').
 
-
 <table>
     <tr>
         <th>Metrics</th>
@@ -63,7 +68,7 @@ Survivalpredict focuses on metrics that directly measure prediction performance.
     </tr>
     <tr>
         <td>brier_scores_administrative</td>
-        <td>Squared error between the true survival and prediction for each time of interest. Censored intervals are ignored. Averaged by the number of rows not censored at a given interval of time. Ideal in cases of 'administrative' censorship, where 'survival time' is modeled after the time of an individual in the experiment, and not calendar time. This mertic is ideal for cases of churn, conversion and operational failure. See <a href=https://jmlr.org/papers/volume24/19-1030/19-1030.pdf>here</a></td>.
+        <td>Squared error between the true survival and prediction for each time of interest. Censored intervals are ignored. Averaged by the number of rows not censored at a given interval of time. Ideal in cases of 'administrative' censorship, where 'survival time' is modeled after the time of an individual in the experiment, and not calendar time. This mertic is ideal for cases of churn, conversion and operational failure. See <a href=https://jmlr.org/papers/volume24/19-1030/19-1030.pdf>here</a>.</td>
     </tr>
     <tr>
         <td>integrated_brier_score_administrative</td>
@@ -78,7 +83,7 @@ Survivalpredict focuses on metrics that directly measure prediction performance.
     </tr>
     <tr>
         <td>brier_scores_ipcw</td>
-        <td>Brier scores with inverse probability of censoring weights. The squared error between the true survival and prediction is weighted using a Kaplan-Meier curve with inverted events, depending on censoring and failure at different points in time. This is a common metric within the field of biostatistics and is used in clinical trials.See <a href=https://pubmed.ncbi.nlm.nih.gov/10474158>here</a></td>
+        <td>Brier scores with inverse probability of censoring weights. The squared error between the true survival and prediction is weighted using a Kaplan-Meier curve with inverted events, depending on censoring and failure at different points in time. This is a common metric within the field of biostatistics and is used in clinical trials.See <a href=https://pubmed.ncbi.nlm.nih.gov/10474158>here</a>.</td>
     </tr>
     <tr>
         <td>integrated_brier_score_ipcw</td>
@@ -91,7 +96,6 @@ Survivalpredict focuses on metrics that directly measure prediction performance.
         <td>integrated_brier_score_ipcw_sklearn_scorer</td>
         <td>scikit-learn scorer wraper around `integrated_brier_score_ipcw` function.</td>
     </tr>
-
 </table>
 
 

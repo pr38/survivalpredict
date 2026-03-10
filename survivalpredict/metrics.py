@@ -204,6 +204,7 @@ def _brier_scores_administrative(
     events: np.ndarray,
     times: np.ndarray,
     max_time: Optional[int] = None,
+    times_start: Optional[np.ndarray] = None,
 ):
     if max_time is None:
         max_time = int(times.max())
@@ -221,12 +222,15 @@ def _brier_scores_administrative(
 
     not_censored = np.logical_or(survived_at_times, events[:, np.newaxis])
 
-    left = not_survived_at_times_with_event * np.square(predictions)
-    right = survived_at_times * np.square(1 - predictions)
+    if times_start is not None:
+        not_left_censored = ~unique_times <= times_start[:, np.newaxis]
+        not_censored = np.logical_or(not_censored, not_left_censored)
+
+    left = (not_survived_at_times_with_event * np.square(predictions)) * not_censored
+    right = (survived_at_times * np.square(1 - predictions)) * not_censored
 
     scores_sumed = np.sum(left + right, axis=0)
 
-    not_censored = np.logical_or(survived_at_times, events[:, np.newaxis])
     n_individuals_at_risk_at_time = not_censored.sum(axis=0)
 
     brier_scores = np.divide(
@@ -244,6 +248,7 @@ def brier_scores_administrative(
     events: np.ndarray,
     times: np.ndarray,
     max_time: Optional[int] = None,
+    times_start: Optional[np.ndarray] = None,
 ):
     times = _as_int_np_array(times)
     events = _as_bool_np_array(events)
@@ -252,7 +257,9 @@ def brier_scores_administrative(
     if max_time is not None:
         max_time = _as_int(max_time, "max_time")
 
-    return _brier_scores_administrative(predictions, events, times, max_time)
+    return _brier_scores_administrative(
+        predictions, events, times, max_time, times_start=times_start
+    )
 
 
 def _integrated_brier_score_administrative(
@@ -261,6 +268,7 @@ def _integrated_brier_score_administrative(
     times: np.ndarray,
     max_time: Optional[int] = None,
     average_by_time: Optional[bool] = False,
+    times_start: Optional[np.ndarray] = None,
 ):
 
     if max_time is None:
@@ -268,7 +276,9 @@ def _integrated_brier_score_administrative(
 
     unique_times = np.arange(1, max_time + 1)
 
-    bs = _brier_scores_administrative(predictions, events, times, max_time=max_time)
+    bs = _brier_scores_administrative(
+        predictions, events, times, max_time=max_time, times_start=times_start
+    )
 
     if average_by_time:
         integrated_brier_score = np.trapezoid(bs, unique_times) / unique_times[-1]
@@ -285,6 +295,7 @@ def integrated_brier_score_administrative(
     times: np.ndarray,
     max_time: Optional[int] = None,
     average_by_time: Optional[bool] = False,
+    times_start: Optional[np.ndarray] = None,
 ):
     times = _as_int_np_array(times)
     events = _as_bool_np_array(events)
@@ -297,7 +308,12 @@ def integrated_brier_score_administrative(
         average_by_time = _as_int(average_by_time, "average_by_time")
 
     return _integrated_brier_score_administrative(
-        predictions, events, times, max_time, average_by_time
+        predictions,
+        events,
+        times,
+        max_time,
+        average_by_time,
+        times_start=times_start,
     )
 
 

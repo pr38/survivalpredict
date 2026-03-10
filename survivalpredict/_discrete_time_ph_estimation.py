@@ -92,6 +92,7 @@ def get_parametric_discrete_time_ph_model(
     strata_uses_pytensor_scan: bool = False,
     coef_prior_normal_sigma: Optional[float] = None,
     base_harard_prior_exponential_lam: Optional[float] = None,
+    times_start: Optional[np.ndarray[tuple[int], np.dtype[np.int64]]] = None,
 ) -> pm.Model:
 
     if max_time is None:
@@ -107,6 +108,10 @@ def get_parametric_discrete_time_ph_model(
     not_censored_at_times = np.logical_or(
         survived_at_times, events.astype(np.bool_)[:, np.newaxis]
     )
+
+    if times_start is not None:
+        not_left_censored = ~times_of_intrest <= times_start[:, np.newaxis]
+        not_censored_at_times = np.logical_or(not_censored_at_times, not_left_censored)
 
     row_ids = np.arange(X.shape[0])
     base_hazard_params_ids = range(n_base_hazard_params)
@@ -236,6 +241,7 @@ def train_parametric_discrete_time_ph_model(
         "trust-krylov",
         "basinhopping",
     ] = "L-BFGS-B",
+    times_start: Optional[np.ndarray[tuple[int], np.dtype[np.int64]]] = None,
 ) -> tuple[
     np.ndarray[tuple[int], np.dtype[np.float64]],
     np.ndarray[tuple[int], np.dtype[np.float64]]
@@ -255,6 +261,7 @@ def train_parametric_discrete_time_ph_model(
         strata_uses_pytensor_scan=strata_uses_pytensor_scan,
         coef_prior_normal_sigma=coef_prior_normal_sigma,
         base_harard_prior_exponential_lam=base_harard_prior_exponential_lam,
+        times_start=times_start,
     )
 
     with warnings.catch_warnings():
