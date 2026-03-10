@@ -51,6 +51,7 @@ def _sur_fit_and_score(
     brier_score_max_time: Optional[int] = None,
     brier_score_average_by_time: Optional[bool] = False,
     error_score: numbers.Real | Literal["raise"] = "raise",
+    times_start: Optional[np.ndarray[tuple[int], np.dtype[np.int64]]] = None,
 ):
 
     start_time = time.time()
@@ -68,24 +69,27 @@ def _sur_fit_and_score(
     events_test = events[test]
 
     has_strata = strata is not None
+    is_left_censored = times_start is not None
+
+    fit_params = fit_params.copy()
+    predict_prams = {}
 
     if has_strata:
         strata_train = strata[train]
         strata_test = strata[test]
-    else:
-        strata_train = None
-        strata_test = None
+        fit_params["strata"] = strata_train
+        predict_prams["strata"] = strata_test
+
+    if is_left_censored:
+        times_start_train = times_start[train]
+        times_start_test = times_start[test]
+        fit_params["times_start"] = times_start_train
 
     if parameters:
         estimator = estimator.set_params(**clone(parameters, safe=False))
 
     try:
-        if has_strata:
-            estimator.fit(
-                X_train, times_train, events_train, strata=strata_train, **fit_params
-            )
-        else:
-            estimator.fit(X_train, times_train, events_train, **fit_params)
+        estimator.fit(X_train, times_train, events_train, **fit_params)
         fit_time = time.time() - start_time
 
     except:
@@ -112,16 +116,13 @@ def _sur_fit_and_score(
                 train_predictions = method(estimator, X_train)
 
         elif issubclass(type(estimator), _SurvivalPredictBase):
-            if has_strata:
-                predictions = estimator.predict(
-                    X_test, max_time=brier_score_max_time, strata=strata_test
-                )
-            else:
-                predictions = estimator.predict(X_test, max_time=brier_score_max_time)
+            predictions = estimator.predict(
+                X_test, max_time=brier_score_max_time, **predict_prams
+            )
 
             if return_train_score:
                 train_predictions = estimator.predict(
-                    X_train, max_time=brier_score_max_time
+                    X_train, max_time=brier_score_max_time, **predict_prams
                 )
 
         else:
@@ -156,6 +157,7 @@ def _sur_fit_and_score(
                 times_test,
                 max_time=brier_score_max_time,
                 average_by_time=brier_score_average_by_time,
+                times_start=times_start_test,
             )
             if return_train_score:
                 train_scores = _integrated_brier_score_administrative(
@@ -164,6 +166,7 @@ def _sur_fit_and_score(
                     times=times_train,
                     max_time=brier_score_max_time,
                     average_by_time=brier_score_average_by_time,
+                    times_start=times_start_train,
                 )
 
         elif isinstance(scorer, Callable):
@@ -218,6 +221,7 @@ def sur_cross_validate(
     return_n_test_samples: Optional[bool] = None,
     method: Optional[bool] = None,
     error_score=np.nan,
+    times_start: Optional[np.ndarray[tuple[int], np.dtype[np.int64]]] = None,
 ):
     if return_train_score is None:
         return_train_score = False
@@ -275,6 +279,7 @@ def sur_cross_validate(
             brier_score_average_by_time=brier_score_average_by_time,
             error_score=error_score,
             strata=strata,
+            times_start=times_start,
         )
         for train, test in indices
     )
@@ -301,6 +306,7 @@ def sur_cross_val_score(
     brier_score_max_time: Optional[int] = None,
     brier_score_average_by_time: Optional[bool] = True,
     strata: Optional[np.array] = None,
+    times_start: Optional[np.ndarray[tuple[int], np.dtype[np.int64]]] = None,
 ):
 
     cv_result = sur_cross_validate(
@@ -319,6 +325,7 @@ def sur_cross_val_score(
         brier_score_max_time=brier_score_max_time,
         brier_score_average_by_time=brier_score_average_by_time,
         strata=strata,
+        times_start=times_start,
     )
 
     return cv_result["test_scores"]
