@@ -31,15 +31,15 @@ def test_left_censorship(estimator_class):
 
     pred = est.predict(X)
 
-    scores = brier_scores_administrative(pred, events, times, times_start=times_start)
+    scores = brier_scores_administrative(pred, times, events, times_start=times_start)
 
     assert np.isnan(scores).all() == False
 
     score_with_left_cen = integrated_brier_score_administrative(
-        pred, events, times, times_start=times_start
+        pred, times, events, times_start=times_start
     )
 
-    score_without_left_cen = integrated_brier_score_administrative(pred, events, times)
+    score_without_left_cen = integrated_brier_score_administrative(pred, times, events)
 
     assert score_with_left_cen != score_without_left_cen
 

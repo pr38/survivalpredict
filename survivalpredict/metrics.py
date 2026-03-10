@@ -87,8 +87,8 @@ def _brier_scores_ipcw(
 
 def brier_scores_ipcw(
     predictions: np.ndarray,
-    events: np.ndarray,
     times: np.ndarray,
+    events: np.ndarray,
     events_for_ipcw: Optional[np.ndarray] = None,
     times_for_ipcw: Optional[np.ndarray] = None,
     max_time: Optional[int] = None,
@@ -150,8 +150,8 @@ def _integrated_brier_score_ipcw(
 
 def integrated_brier_score_ipcw(
     predictions: np.ndarray,
-    events: np.ndarray,
     times: np.ndarray,
+    events: np.ndarray,
     events_for_ipcw: Optional[np.ndarray] = None,
     times_for_ipcw: Optional[np.ndarray] = None,
     average_by_time: Optional[bool] = False,
@@ -191,7 +191,7 @@ def integrated_brier_score_ipcw_sklearn_metric(
 
     max_time = y_pred.shape[1]
 
-    return integrated_brier_score_ipcw(y_pred, events, times, max_time=max_time)
+    return integrated_brier_score_ipcw(y_pred, times, events, max_time=max_time)
 
 
 integrated_brier_score_ipcw_sklearn_scorer = make_scorer(
@@ -245,8 +245,8 @@ def _brier_scores_administrative(
 
 def brier_scores_administrative(
     predictions: np.ndarray,
-    events: np.ndarray,
     times: np.ndarray,
+    events: np.ndarray,
     max_time: Optional[int] = None,
     times_start: Optional[np.ndarray] = None,
 ):
@@ -291,8 +291,8 @@ def _integrated_brier_score_administrative(
 
 def integrated_brier_score_administrative(
     predictions: np.ndarray,
-    events: np.ndarray,
     times: np.ndarray,
+    events: np.ndarray,
     max_time: Optional[int] = None,
     average_by_time: Optional[bool] = False,
     times_start: Optional[np.ndarray] = None,
@@ -325,7 +325,7 @@ def integrated_brier_score_administrative_sklearn_metric(
     max_time = y_pred.shape[1]
 
     return integrated_brier_score_administrative(
-        y_pred, events, times, max_time=max_time
+        y_pred, times, events, max_time=max_time
     )
 
 

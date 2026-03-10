@@ -84,6 +84,9 @@ def _sur_fit_and_score(
         times_start_train = times_start[train]
         times_start_test = times_start[test]
         fit_params["times_start"] = times_start_train
+    else:
+        times_start_train = None
+        times_start_test = None
 
     if parameters:
         estimator = estimator.set_params(**clone(parameters, safe=False))
