@@ -10,7 +10,7 @@ from ._data_validation import (
     _as_numeric_np_array,
 )
 from ._estimator_utils import _unpack_sklearn_pipeline_target
-from ._nonparametric import get_kaplan_meier_survival_curve_from_time_as_int_
+from ._nonparametric import get_kaplan_meier_survival_curve
 
 __all__ = [
     "brier_scores_ipcw",
@@ -50,7 +50,7 @@ def _brier_scores_ipcw(
     unique_times = np.arange(1, max_time + 1)
 
     kaplan_meier_survival_curve_inverted_event = (
-        get_kaplan_meier_survival_curve_from_time_as_int_(
+        get_kaplan_meier_survival_curve(
             np.logical_not(events_for_ipcw), times_for_ipcw, max_time
         )
     )

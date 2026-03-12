@@ -37,17 +37,19 @@ split_and_preprocess_data_by_strata_siganture = nb.types.Tuple(
         nb.types.List(nb.types.Array(nb.types.int64, 1, "C")),
         nb.types.List(nb.types.Array(nb.types.float64, 1, "C")),
         nb.types.List(nb.types.int64),
+        nb.types.List(nb.types.Array(nb.types.int64, 1, "C")),
     )
 )(
     nb.types.Array(nb.types.float64, 2, "C", False, aligned=True),
     nb.types.Array(nb.types.int64, 1, "C", False, aligned=True),
     nb.types.Array(nb.types.bool_, 1, "C", False, aligned=True),
     nb.types.Array(nb.types.int64, 1, "C", False, aligned=True),
+    nb.types.Array(nb.types.int64, 1, "C", False, aligned=True),
 )
 
 
 @nb.njit(split_and_preprocess_data_by_strata_siganture, cache=True)
-def split_and_preprocess_data_by_strata(X, times, events, strata):
+def split_and_preprocess_data_by_strata(X, times, events, strata, times_start):
 
     seen_strata, stata_index = _unique_with_return_inverse(strata)
     n_strata = len(seen_strata)
@@ -60,6 +62,7 @@ def split_and_preprocess_data_by_strata(X, times, events, strata):
     time_return_inverse_strata = []
     n_unique_times_strata = []
     event_counts_at_times_strata = []
+    times_start_strata = []
 
     for mask in strata_masks:
         X_s = X[mask]
@@ -80,6 +83,8 @@ def split_and_preprocess_data_by_strata(X, times, events, strata):
 
         event_counts_at_times_strata.append(event_counts_at_times_s)
 
+        times_start_strata.append(times_start[mask])
+
     return (
         n_strata,
         seen_strata,
@@ -89,6 +94,7 @@ def split_and_preprocess_data_by_strata(X, times, events, strata):
         time_return_inverse_strata,
         event_counts_at_times_strata,
         n_unique_times_strata,
+        times_start_strata,
     )
 
 
@@ -103,7 +109,10 @@ def preprocess_data_for_cox_ph(X, times, events, strata=None):
             time_return_inverse_strata,
             event_counts_at_times_strata,
             n_unique_times_strata,
-        ) = split_and_preprocess_data_by_strata(X, times, events, strata)
+            _,
+        ) = split_and_preprocess_data_by_strata(
+            X, times, events, strata, np.zeros(X.shape[0], dtype=np.int64)
+        )
 
     else:
         unique_times, time_return_inverse = np.unique(times, return_inverse=True)

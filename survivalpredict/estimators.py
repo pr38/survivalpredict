@@ -38,7 +38,10 @@ from ._discrete_time_ph_estimation import (
     train_parametric_discrete_time_ph_model,
 )
 from ._neighbors import build_kaplan_meier_survival_curve_from_neighbors_indexes
-from ._nonparametric import get_kaplan_meier_survival_curve_from_time_as_int_
+from ._nonparametric import (
+    get_kaplan_meier_survival_curve,
+    get_kaplan_meier_survival_curve_with_left_censorship,
+)
 from ._stratification import (
     get_l_div_m_stata_per_strata,
     map_new_strata,
@@ -62,6 +65,9 @@ class _SurvivalPredictBase(BaseEstimator):
 
         if "max_time" in kwargs:
             del kwargs["max_time"]
+        
+        if 'times_start' in predict_kwargs:
+            del predict_kwargs['times_start']
 
         X = args[0]
 
@@ -558,7 +564,15 @@ class ParametricDiscreteTimePH(_SurvivalPredictBase):
 
 class KaplanMeierSurvivalEstimator(_SurvivalPredictBase):
 
-    def fit(self, X, times, events, strata=None, check_input=True):
+    def fit(
+        self,
+        X,
+        times: np.ndarray[tuple[int], np.dtype[np.int64]],
+        events: np.ndarray[tuple[int], np.dtype[np.bool_]],
+        strata: Optional[np.ndarray[tuple[int], np.dtype[np.int64]]] = None,
+        check_input: bool = True,
+        times_start: Optional[np.ndarray[tuple[int], np.dtype[np.int64]]] = None,
+    ):
 
         if check_input:
             X, times, events = validate_survival_data(X, times, events)
@@ -568,19 +582,38 @@ class KaplanMeierSurvivalEstimator(_SurvivalPredictBase):
 
         self._max_time_observed = int(np.max(times))
 
+        if times_start is None:
+            uses_left_censorship = False
+            times_start = np.zeros(X.shape[0], dtype=np.int64)
+        else:
+            uses_left_censorship = True
+
         if strata is None:
 
             self._uses_strata = False
-            self.kaplan_meier_survival_curve = (
-                get_kaplan_meier_survival_curve_from_time_as_int_(
+            if uses_left_censorship == False:
+                self.kaplan_meier_survival_curve = get_kaplan_meier_survival_curve(
                     events, times, self._max_time_observed
                 )
-            )
-        else:
-            (n_strata, seen_strata, events_strata, times_strata, _, _, _, _) = (
-                split_and_preprocess_data_by_strata(
-                    np.ones((X.shape[0], 1)), times, events, strata
+            else:
+                self.kaplan_meier_survival_curve = (
+                    get_kaplan_meier_survival_curve_with_left_censorship(
+                        events, times, times_start, self._max_time_observed
+                    )
                 )
+        else:
+            (
+                n_strata,
+                seen_strata,
+                events_strata,
+                times_strata,
+                _,
+                _,
+                _,
+                _,
+                times_start_strata,
+            ) = split_and_preprocess_data_by_strata(
+                np.ones((X.shape[0], 1)), times, events, strata, times_start
             )
 
             self._uses_strata = True
@@ -592,13 +625,23 @@ class KaplanMeierSurvivalEstimator(_SurvivalPredictBase):
             )
 
             for s_i in range(n_strata):
-                self.kaplan_meier_survival_curve[s_i] = (
-                    get_kaplan_meier_survival_curve_from_time_as_int_(
-                        events_strata[s_i],
-                        times_strata[s_i],
-                        self._max_time_observed,
+                if uses_left_censorship == False:
+                    self.kaplan_meier_survival_curve[s_i] = (
+                        get_kaplan_meier_survival_curve(
+                            events_strata[s_i],
+                            times_strata[s_i],
+                            self._max_time_observed,
+                        )
                     )
-                )
+                else:
+                    self.kaplan_meier_survival_curve[s_i] = (
+                        get_kaplan_meier_survival_curve_with_left_censorship(
+                            events_strata[s_i],
+                            times_strata[s_i],
+                            times_start_strata[s_i],
+                            self._max_time_observed,
+                        )
+                    )
 
         self.is_fitted_ = True
         return self
@@ -995,6 +1038,6 @@ class AalenAdditiveHazard(_SurvivalPredictBase):
         )
 
         if self.clip_hazards:
-            hazards = np.clip(hazards,0.,1.)
+            hazards = np.clip(hazards, 0.0, 1.0)
 
         return np.exp(-hazards.cumsum(axis=1))

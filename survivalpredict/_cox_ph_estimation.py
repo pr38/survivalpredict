@@ -1,8 +1,6 @@
 import numba as nb
 import numpy as np
 
-from ._stratification import split_and_preprocess_data_by_strata
-
 
 def elasticnet_loss_jacobian_hessian(weights, alpha, l1_ratio):
     l1 = alpha * l1_ratio * np.abs(weights).sum()

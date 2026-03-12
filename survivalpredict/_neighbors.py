@@ -1,7 +1,7 @@
 import numba as nb
 import numpy as np
 
-from ._nonparametric import get_kaplan_meier_survival_curve_from_time_as_int_
+from ._nonparametric import get_kaplan_meier_survival_curve
 
 build_kaplan_meier_survival_curve_from_neighbors_indexes_siganture = nb.types.Array(
     nb.types.float64, 2, "C", False, aligned=True
@@ -30,7 +30,7 @@ def build_kaplan_meier_survival_curve_from_neighbors_indexes(
         neighbors_index = neighbors_indexes[i]
         neighbors_events = event[neighbors_index]
         neighbors_times = times[neighbors_index]
-        neighbors_kaplan_meier = get_kaplan_meier_survival_curve_from_time_as_int_(
+        neighbors_kaplan_meier = get_kaplan_meier_survival_curve(
             neighbors_events, neighbors_times, max_time
         )
         predictions[i] = neighbors_kaplan_meier

@@ -33,7 +33,7 @@ The estimators implemented in the `survivalpredict.estimators` sub-module.
         <td>KaplanMeierSurvivalEstimator</td>
         <td> Univariate non-parametric survival curve. Useful as a baseline/dummy estimator.</td>
         <td>Accepts strata, but builds a survival curve for each strata. </td>
-        <td>N/A</td>
+        <td>Yes</td>
     </tr>
         <tr>
         <td>KNeighborsSurvival</td>
