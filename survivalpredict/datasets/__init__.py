@@ -24,3 +24,18 @@ def load_iranian_telecom_churn() -> dict[str, np.ndarray]:
     )
 
     return {"X": X, "times": times, "events": events, "column_names": col_names}
+
+
+def load_kickstarter() -> dict[str, np.ndarray]:
+    """This dataset was originally  hosted by by professor Chandan Reddy's virginia tech site. taken from https://dmkd.cs.vt.edu/projects/survival/data/"""
+
+    dirname = os.path.dirname(os.path.abspath(__file__))
+
+    X = np.loadtxt(os.path.join(dirname, "kickstarter_X.txt"), delimiter=",")
+    times = np.loadtxt(os.path.join(dirname, "kickstarter_times.txt"), delimiter=",")
+    events = np.loadtxt(os.path.join(dirname, "kickstarter_events.txt"), delimiter=",")
+    col_names = np.loadtxt(
+        os.path.join(dirname, "kickstarter_col_names.txt"), delimiter=",", dtype=str
+    )
+
+    return {"X": X, "times": times, "events": events, "column_names": col_names}
