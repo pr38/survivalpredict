@@ -13,7 +13,10 @@ from sklearn.utils.validation import check_is_fitted, check_memory
 try:
     from sklearn.utils._repr_html import _VisualBlock
 except ImportError:
-    from sklearn.utils._estimator_html_repr import _VisualBlock
+    try:
+        from sklearn.utils._estimator_html_repr import _VisualBlock
+    except ImportError:
+        from sklearn.utils._repr_html.estimator import _VisualBlock
 
 from ._data_validation import (
     _as_bool_np_array,
