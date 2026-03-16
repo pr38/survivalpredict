@@ -11,11 +11,12 @@ _estimate_allen_additive_hazard_time_weights_sig = nb.types.Tuple(
     nb.types.Array(nb.types.int64, 1, "C", False, aligned=True),
     nb.types.Array(nb.types.bool_, 1, "C", False, aligned=True),
     nb.types.Array(nb.types.int64, 1, "C", False, aligned=True),
+    nb.types.float64,
 )
 
 
 @nb.njit(_estimate_allen_additive_hazard_time_weights_sig, cache=True)
-def _estimate_allen_additive_hazard_time_weights(X, times, events, times_start):
+def _estimate_allen_additive_hazard_time_weights(X, times, events, times_start, alpha):
     hazard_weights_times = np.unique(times[events])
     hazard_weights = np.empty((hazard_weights_times.shape[0], X.shape[1]))
 
@@ -32,10 +33,14 @@ def _estimate_allen_additive_hazard_time_weights(X, times, events, times_start):
 
             X_mask = X[not_censored, :]
 
-            a = np.dot(X_mask.T, X_mask)
+            a = np.dot(X_mask.T, X_mask) + alpha
             b = np.dot(X_mask.T, death_as_target)
 
-            w = np.linalg.solve(a, b)
+            try:
+                w = np.linalg.solve(a, b)
+            except:
+                w = np.zeros(X.shape[1])
+   
             hazard_weights[i, :] = w
 
     return hazard_weights, hazard_weights_times

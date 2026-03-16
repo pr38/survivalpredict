@@ -65,9 +65,9 @@ class _SurvivalPredictBase(BaseEstimator):
 
         if "max_time" in kwargs:
             del kwargs["max_time"]
-        
-        if 'times_start' in predict_kwargs:
-            del predict_kwargs['times_start']
+
+        if "times_start" in predict_kwargs:
+            del predict_kwargs["times_start"]
 
         X = args[0]
 
@@ -988,10 +988,12 @@ class AalenAdditiveHazard(_SurvivalPredictBase):
 
     _parameter_constraints: dict = {
         "clip_hazards": ["boolean"],
+        "alpha": [Interval(Real, 0, None, closed="left")],
     }
 
-    def __init__(self, clip_hazards: bool = True):
+    def __init__(self, clip_hazards: bool = True, alpha: float = 0.0):
         self.clip_hazards = clip_hazards
+        self.alpha = alpha
 
     @_fit_context(prefer_skip_nested_validation=True)
     def fit(
@@ -1013,7 +1015,9 @@ class AalenAdditiveHazard(_SurvivalPredictBase):
         self._max_time_observed = int(np.max(times))
 
         hazard_weights, hazard_weights_times = (
-            _estimate_allen_additive_hazard_time_weights(X, times, events, times_start)
+            _estimate_allen_additive_hazard_time_weights(
+                X, times, events, times_start, self.alpha
+            )
         )
 
         self._hazard_weights = hazard_weights
