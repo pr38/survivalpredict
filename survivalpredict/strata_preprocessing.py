@@ -14,7 +14,13 @@ from sklearn.utils.validation import check_is_fitted
 try:
     from sklearn.utils._repr_html import _VisualBlock
 except ImportError:
-    from sklearn.utils._estimator_html_repr import _VisualBlock
+    try:
+        from sklearn.utils._estimator_html_repr import _VisualBlock
+    except ImportError:
+        try:
+            from sklearn._repr_html.estimator import _VisualBlock
+        except ImportError:
+            pass
 
 from ._data_validation import _as_int_np_array, _as_numeric_np_array
 from ._estimator_utils import _get_estimator_names
