@@ -34,7 +34,18 @@ def get_kaplan_meier_survival_curve(
     )
     hazard_at_step = np.where(death_per_step != 0, hazard_at_step, 0)
 
-    return (1 - hazard_at_step).cumprod()
+    survival_curve = (1 - hazard_at_step).cumprod()
+
+    if len(survival_curve) > max_time:
+        survival_curve = survival_curve[:max_time]
+    elif len(survival_curve) < max_time:
+        missing_dims = max_time - len(survival_curve)
+
+        impulted_values = np.repeat(survival_curve[-1], missing_dims)
+
+        survival_curve = np.hstack((survival_curve, impulted_values))
+
+    return survival_curve
 
 
 get_kaplan_meier_survival_curve_with_left_censorship_signature_ = nb.types.Array(

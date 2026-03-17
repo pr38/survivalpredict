@@ -21,10 +21,9 @@ build_kaplan_meier_survival_curve_from_neighbors_indexes_siganture = nb.types.Ar
 def build_kaplan_meier_survival_curve_from_neighbors_indexes(
     times, event, neighbors_indexes, max_time
 ):
-
-    predictions = np.empty((neighbors_indexes.shape[0], max_time))
-
     n_rows = neighbors_indexes.shape[0]
+
+    predictions = np.empty((n_rows, max_time))
 
     for i in nb.prange(n_rows):
         neighbors_index = neighbors_indexes[i]
