@@ -45,20 +45,23 @@ def build_sklearn_pipeline_target(
     events = _as_bool_np_array(events)
 
     dtype = [("times", np.int64), ("events", bool)]
+    if strata is not None:
+        strata = _as_int_np_array(strata)
+        dtype.append(("strata", np.int64))
+
+    if times_start is not None:
+        times_start = validate_times_start_array(times_start, times)
+        dtype.append(("times_start", np.int64))
 
     y = np.empty(times.shape[0], dtype=dtype)
 
     y["times"] = times
     y["events"] = events
 
-    if strata:
-        strata = _as_int_np_array(strata)
-        dtype.append(("strata", np.int64))
+    if strata is not None:
         y["strata"] = strata
 
-    if times_start:
-        times_start = validate_times_start_array(times_start, times)
-        dtype.append(("times_start", np.int64))
+    if times_start is not None:
         y["times_start"] = strata
 
     return y
