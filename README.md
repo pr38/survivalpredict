@@ -22,7 +22,7 @@ The estimators implemented in the `survivalpredict.estimators` sub-module.
     <tr>
         <td>CoxProportionalHazard</td>
         <td>
-        Cox proportional hazards model is a linear semi-parametric relative risk model. A staple of survival analysis. Fast and efficient to train. Survivalpredict's implementation has many optimizations and is up to 10x to 20x faster than other implementations available to Python. Both breslow and efron ties are supported. Currently only the breslow base hazard is avalable.
+        Cox Proportional Hazards model is a linear semi-parametric relative risk model. A staple of survival analysis. Fast and efficient to train. Survivalpredict's implementation has many optimizations and is up to 10x to 20x faster than other implementations available to Python. Both breslow and efron ties are supported. Currently only the breslow base hazard is avalable.
         </td>
         <td> Yes</td>
         <td>No/todo</td>
@@ -32,6 +32,13 @@ The estimators implemented in the `survivalpredict.estimators` sub-module.
         <td> A fully parametric linear hazards model. Chen, weibull, log_normal, log_logistic, gompertz, gamma and additive_chen_weibull baseline hazards are available as hyperparameters. Maximum likelihood is estimated using a survival distinct time likelihood with censorship. Implemented with Pymc/Pytensor, with either a Jax or numba backend.</td>
         <td>Yes</td>
         <td>Yes</td>
+    </tr>
+        <tr>
+        <td>CoxElasticNetPH</td>
+        <td>Cox Proportional Hazards model model with Elastic-Net/Lasso penalty and feature shrinkage/selection. Uses the 'Newton Raphson-like' coordinate descent algorithm described in <a href=https://pmc.ncbi.nlm.nih.gov/articles/PMC4824408>Simon, Noah et al. “Regularization Paths for Cox's Proportional Hazards Model via Coordinate Descent</a>. Assumes breslow ties. The current literature is unclear on how to incorporate stratification support into said algorithm.
+        </td>
+        <td> No</td>
+        <td>No/todo</td>
     </tr>
     <tr>
         <td>KaplanMeierSurvivalEstimator</td>

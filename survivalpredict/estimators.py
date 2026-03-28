@@ -12,42 +12,29 @@ from sklearn.utils.validation import check_is_fitted
 
 from ._allen_additive import (
     _estimate_allen_additive_hazard_time_weights,
-    _generate_hazards_at_times_from_allen_additive_hazard_weights,
-)
+    _generate_hazards_at_times_from_allen_additive_hazard_weights)
 from ._base_hazard import _get_breslow_base_hazard
+from ._cox_net_ph import (get_relative_risk_from_cox_net_ph_weights,
+                          train_cox_net_ph)
+from ._cox_ph_elastic_net import train_cox_elastic_net_regularization_paths
 from ._cox_ph_estimation import train_cox_ph_breslow, train_cox_ph_efron
-from ._cox_net_ph import train_cox_net_ph, get_relative_risk_from_cox_net_ph_weights
-from ._data_validation import (
-    _as_int,
-    _as_int_np_array,
-    _as_numeric_np_array,
-    validate_survival_data,
-    validate_times_start_array,
-)
+from ._data_validation import (_as_int, _as_int_np_array, _as_numeric_np_array,
+                               validate_survival_data,
+                               validate_times_start_array)
 from ._discrete_time_ph_estimation import (
-    _additive_chen_weibull_pdf,
-    _chen_pdf,
-    _gamma_pdf,
-    _gompertz_pdf,
-    _log_logistic_pdf,
-    _log_normal_pdf,
-    _scale_times,
-    _weibull_pdf,
+    _additive_chen_weibull_pdf, _chen_pdf, _gamma_pdf, _gompertz_pdf,
+    _log_logistic_pdf, _log_normal_pdf, _scale_times, _weibull_pdf,
     get_parametric_discrete_time_ph_model,
     predict_parametric_discrete_time_ph_model,
-    train_parametric_discrete_time_ph_model,
-)
-from ._neighbors import build_kaplan_meier_survival_curve_from_neighbors_indexes
+    train_parametric_discrete_time_ph_model)
+from ._neighbors import \
+    build_kaplan_meier_survival_curve_from_neighbors_indexes
 from ._nonparametric import (
     get_kaplan_meier_survival_curve,
-    get_kaplan_meier_survival_curve_with_left_censorship,
-)
-from ._stratification import (
-    get_l_div_m_stata_per_strata,
-    map_new_strata,
-    preprocess_data_for_cox_ph,
-    split_and_preprocess_data_by_strata,
-)
+    get_kaplan_meier_survival_curve_with_left_censorship)
+from ._stratification import (get_l_div_m_stata_per_strata, map_new_strata,
+                              preprocess_data_for_cox_ph,
+                              split_and_preprocess_data_by_strata)
 
 __all__ = [
     "CoxProportionalHazard",
@@ -1045,3 +1032,79 @@ class AalenAdditiveHazard(_SurvivalPredictBase):
             hazards = np.clip(hazards, 0.0, 1.0)
 
         return np.exp(-hazards.cumsum(axis=1))
+
+class CoxElasticNetPH(_SurvivalPredictBase):
+
+    _parameter_constraints: dict = {
+        "alpha": [Interval(Real, 0, None, closed="left")],
+        "l1_ratio": [Interval(Real, 0, 1, closed="both")],
+        "max_iter": [Interval(Integral, 1, None, closed="left"), None],
+        "tol": [Interval(Real, 0, None, closed="left")],
+    }
+
+    def __init__(
+        self,
+        *,
+        alpha: float = 0.0,
+        l1_ratio: float = 0.5,
+        max_iter: Optional[int] = 100,
+        tol: float = 1e-9,
+    ):
+        self.alpha = alpha
+        self.l1_ratio = l1_ratio
+        self.max_iter = max_iter
+        self.tol = tol
+
+    @_fit_context(prefer_skip_nested_validation=True)
+    def fit(self, X, times, events, weights=None, check_input=True):
+
+        if check_input:
+            X, times, events = validate_survival_data(X, times, events)
+
+        self._max_time_observed = np.max(times)
+
+        coefs, loss = train_cox_elastic_net_regularization_paths(
+            X, times, events, self.alpha, self.l1_ratio, self.tol, self.max_iter
+        )
+
+        self.coef_ = coefs
+        self.n_log_likelihood = loss
+
+        risk = np.exp(np.dot(X, self.coef_))
+        self._breslow_base_hazard = _get_breslow_base_hazard(
+            risk, times, events, self._max_time_observed
+        )
+        self._breslow_base_survival = np.exp(-self._breslow_base_hazard.cumsum())
+
+        self.is_fitted_ = True
+        return self
+
+    def predict(self, X, max_time: Optional[int] = None):
+        check_is_fitted(self)
+
+        if max_time is None:
+            max_time = self._max_time_observed
+        else:
+            max_time = _as_int(max_time, "max_time")
+
+        risk = np.exp(np.dot(X, self.coef_))
+
+        survival = self._breslow_base_survival ** risk[:, None]
+
+        if max_time == self._max_time_observed:
+            return survival
+        elif max_time < self._max_time_observed:
+            return survival[:, :max_time]
+        else:  # max_time > self._max_time_observed
+            missing_dims = max_time - self._max_time_observed
+
+            impulted_values = np.repeat(
+                survival[:, -1][np.newaxis], missing_dims, axis=0
+            ).T
+
+            return np.hstack([survival, impulted_values])
+
+    def predict_risk(self, X):
+        check_is_fitted(self)
+
+        return np.exp(np.dot(X, self.coef_))
