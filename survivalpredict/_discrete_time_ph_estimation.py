@@ -2,13 +2,12 @@ import warnings
 from typing import Any, Callable, Literal, Optional
 
 import numpy as np
-import pymc as pm  # type: ignore
-import pymc_extras as pmx  # type: ignore
-import pytensor
-import pytensor.tensor as pt
+# import pymc as pm  # type: ignore
+# import pymc_extras as pmx  # type: ignore
+# import pytensor
+# import pytensor.tensor as pt
 import scipy
-from pytensor.tensor.variable import TensorVariable
-
+#from pytensor.tensor.variable import TensorVariable
 
 def _scale_times(
     times: np.ndarray[tuple[int], np.dtype[np.int64]], time_max: int
@@ -77,9 +76,9 @@ def get_parametric_discrete_time_ph_model(
     base_hazard_pdf_callable: Callable[
         [
             np.ndarray[tuple[int], np.dtype[np.float64]],
-            TensorVariable,  # 1d float64
+            "pytensor.tensor.variable.TensorVariable",  # 1d float64
         ],
-        TensorVariable,  # 1d float64
+        "pytensor.tensor.variable.TensorVariable",  # 1d float64
     ],
     n_base_hazard_params: int,
     max_time: Optional[int] = None,
@@ -93,7 +92,11 @@ def get_parametric_discrete_time_ph_model(
     coef_prior_normal_sigma: Optional[float] = None,
     base_harard_prior_exponential_lam: Optional[float] = None,
     times_start: Optional[np.ndarray[tuple[int], np.dtype[np.int64]]] = None,
-) -> pm.Model:
+) -> "pymc.Model":
+    import pymc as pm  # type: ignore
+    import pytensor
+    import pytensor.tensor as pt
+
 
     if max_time is None:
         max_time = times.max()
@@ -211,9 +214,9 @@ def train_parametric_discrete_time_ph_model(
     hazard_pdf_callable: Callable[
         [
             np.ndarray[tuple[int], np.dtype[np.float64]],
-            TensorVariable,  # 1d float64
+            "pytensor.tensor.variable.TensorVariable",  # 1d float64
         ],
-        TensorVariable,  # 1d float64
+        "pytensor.tensor.variable.TensorVariable",  # 1d float64
     ],
     n_base_hazard_params: int,
     alpha: float,
@@ -247,6 +250,7 @@ def train_parametric_discrete_time_ph_model(
     np.ndarray[tuple[int], np.dtype[np.float64]]
     | np.ndarray[tuple[int, int], np.dtype[np.float64]],
 ]:
+    import pymc_extras as pmx  # type: ignore
 
     model = get_parametric_discrete_time_ph_model(
         X,
