@@ -51,7 +51,7 @@ The estimators implemented in the `survivalpredict.estimators` sub-module.
         <td>K nearest neighbors for survival. An in-memory non-parametric model that builds a Kaplan-Meier survival curve based on neighbors.
         </td>
         <td>No</td>
-        <td>No</td>
+        <td>Yes</td>
     </tr>
         <td>CoxNNetPH</td>
         <td> A neural network model for estimating relative risk. Cox proportional hazards model's 'negative log likelihood for Breslow ties' is used as a loss function. Breslow's base hazard for relative risk is used to estimate survival across time. Implemented using Jax.  </td>

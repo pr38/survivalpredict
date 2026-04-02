@@ -44,7 +44,7 @@ def validate_times_array(a):
         raise ValueError(
             "for the times array it is assumed that event and right censorship events to start at 1"
         )
-    return a
+    return np.array(a)
 
 
 def validate_times_start_array(times_start, times):
@@ -54,7 +54,7 @@ def validate_times_start_array(times_start, times):
     if (times_start >= times).all():
         raise ValueError("times_start array should be less than times array")
 
-    return times_start
+    return np.array(times_start)
 
 
 def validate_survival_data(X, times, events):

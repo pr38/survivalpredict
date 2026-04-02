@@ -12,29 +12,46 @@ from sklearn.utils.validation import check_is_fitted
 
 from ._allen_additive import (
     _estimate_allen_additive_hazard_time_weights,
-    _generate_hazards_at_times_from_allen_additive_hazard_weights)
+    _generate_hazards_at_times_from_allen_additive_hazard_weights,
+)
 from ._base_hazard import _get_breslow_base_hazard
-from ._cox_net_ph import (get_relative_risk_from_cox_net_ph_weights,
-                          train_cox_net_ph)
+from ._cox_net_ph import get_relative_risk_from_cox_net_ph_weights, train_cox_net_ph
 from ._cox_ph_elastic_net import train_cox_elastic_net_regularization_paths
 from ._cox_ph_estimation import train_cox_ph_breslow, train_cox_ph_efron
-from ._data_validation import (_as_int, _as_int_np_array, _as_numeric_np_array,
-                               validate_survival_data,
-                               validate_times_start_array)
+from ._data_validation import (
+    _as_int,
+    _as_int_np_array,
+    _as_numeric_np_array,
+    validate_survival_data,
+    validate_times_start_array,
+)
 from ._discrete_time_ph_estimation import (
-    _additive_chen_weibull_pdf, _chen_pdf, _gamma_pdf, _gompertz_pdf,
-    _log_logistic_pdf, _log_normal_pdf, _scale_times, _weibull_pdf,
+    _additive_chen_weibull_pdf,
+    _chen_pdf,
+    _gamma_pdf,
+    _gompertz_pdf,
+    _log_logistic_pdf,
+    _log_normal_pdf,
+    _scale_times,
+    _weibull_pdf,
     get_parametric_discrete_time_ph_model,
     predict_parametric_discrete_time_ph_model,
-    train_parametric_discrete_time_ph_model)
-from ._neighbors import \
-    build_kaplan_meier_survival_curve_from_neighbors_indexes
+    train_parametric_discrete_time_ph_model,
+)
+from ._neighbors import (
+    build_kaplan_meier_survival_curve_from_neighbors_indexes,
+    build_kaplan_meier_survival_curve_from_neighbors_indexes_with_left_censoring,
+)
 from ._nonparametric import (
     get_kaplan_meier_survival_curve,
-    get_kaplan_meier_survival_curve_with_left_censorship)
-from ._stratification import (get_l_div_m_stata_per_strata, map_new_strata,
-                              preprocess_data_for_cox_ph,
-                              split_and_preprocess_data_by_strata)
+    get_kaplan_meier_survival_curve_with_left_censorship,
+)
+from ._stratification import (
+    get_l_div_m_stata_per_strata,
+    map_new_strata,
+    preprocess_data_for_cox_ph,
+    split_and_preprocess_data_by_strata,
+)
 
 __all__ = [
     "CoxProportionalHazard",
@@ -561,19 +578,23 @@ class KaplanMeierSurvivalEstimator(_SurvivalPredictBase):
         times_start: Optional[np.ndarray[tuple[int], np.dtype[np.int64]]] = None,
     ):
 
+        if times_start is None:
+            uses_left_censorship = False
+        else:
+            uses_left_censorship = True
+
         if check_input:
             X, times, events = validate_survival_data(X, times, events)
 
             if strata is not None:
                 strata = _as_int_np_array(strata, "strata")
+            if uses_left_censorship:
+                times_start = validate_times_start_array(times_start, times)
 
         self._max_time_observed = int(np.max(times))
 
-        if times_start is None:
-            uses_left_censorship = False
+        if not uses_left_censorship:
             times_start = np.zeros(X.shape[0], dtype=np.int64)
-        else:
-            uses_left_censorship = True
 
         if strata is None:
 
@@ -723,9 +744,26 @@ class KNeighborsSurvival(_SurvivalPredictBase):
         self.metric_param = metric_param
         self.n_jobs = n_jobs
 
-    def fit(self, X, times, events, check_input=True):
+    def fit(
+        self,
+        X,
+        times,
+        events,
+        check_input=True,
+        times_start: Optional[np.ndarray[tuple[int], np.dtype[np.int64]]] = None,
+    ):
+
+        if times_start is not None:
+            self._uses_times_start = True
+        else:
+            self._uses_times_start = False
+
         if check_input:
             X, times, events = validate_survival_data(X, times, events)
+            validate_times_start_array
+
+            if self._uses_times_start:
+                times_start = validate_times_start_array(times_start, times)
 
         self._max_time_observed = int(np.max(times))
 
@@ -744,6 +782,9 @@ class KNeighborsSurvival(_SurvivalPredictBase):
         self._times_in_memmory = times
         self._events_in_memmory = events
 
+        if self._uses_times_start:
+            self._times_start_in_memmory = times_start
+
         self.is_fitted_ = True
 
         return self
@@ -760,9 +801,21 @@ class KNeighborsSurvival(_SurvivalPredictBase):
 
         X = _as_numeric_np_array(X)
 
-        return build_kaplan_meier_survival_curve_from_neighbors_indexes(
-            self._times_in_memmory, self._events_in_memmory, neighbors_indexes, max_time
-        )
+        if self._uses_times_start:
+            return build_kaplan_meier_survival_curve_from_neighbors_indexes_with_left_censoring(
+                self._times_in_memmory,
+                self._events_in_memmory,
+                neighbors_indexes,
+                max_time,
+                self._times_start_in_memmory,
+            )
+        else:
+            return build_kaplan_meier_survival_curve_from_neighbors_indexes(
+                self._times_in_memmory,
+                self._events_in_memmory,
+                neighbors_indexes,
+                max_time,
+            )
 
 
 class CoxNNetPH(_SurvivalPredictBase):
@@ -1032,6 +1085,7 @@ class AalenAdditiveHazard(_SurvivalPredictBase):
             hazards = np.clip(hazards, 0.0, 1.0)
 
         return np.exp(-hazards.cumsum(axis=1))
+
 
 class CoxElasticNetPH(_SurvivalPredictBase):
 

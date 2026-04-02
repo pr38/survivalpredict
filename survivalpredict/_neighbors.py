@@ -1,7 +1,10 @@
 import numba as nb
 import numpy as np
 
-from ._nonparametric import get_kaplan_meier_survival_curve
+from ._nonparametric import (
+    get_kaplan_meier_survival_curve,
+    get_kaplan_meier_survival_curve_with_left_censorship,
+)
 
 build_kaplan_meier_survival_curve_from_neighbors_indexes_siganture = nb.types.Array(
     nb.types.float64, 2, "C", False, aligned=True
@@ -31,6 +34,41 @@ def build_kaplan_meier_survival_curve_from_neighbors_indexes(
         neighbors_times = times[neighbors_index]
         neighbors_kaplan_meier = get_kaplan_meier_survival_curve(
             neighbors_events, neighbors_times, max_time
+        )
+        predictions[i] = neighbors_kaplan_meier
+
+    return predictions
+
+
+build_kaplan_meier_survival_curve_from_neighbors_indexes_siganture = nb.types.Array(
+    nb.types.float64, 2, "C", False, aligned=True
+)(
+    nb.types.Array(nb.types.int64, 1, "C", False, aligned=True),
+    nb.types.Array(nb.types.boolean, 1, "C", False, aligned=True),
+    nb.types.Array(nb.types.int64, 2, "C", False, aligned=True),
+    nb.types.int64,
+    nb.types.Array(nb.types.int64, 1, "C", False, aligned=True),
+)
+
+
+def build_kaplan_meier_survival_curve_from_neighbors_indexes_with_left_censoring(
+    times,
+    event,
+    neighbors_indexes,
+    max_time,
+    times_start,
+):
+    n_rows = neighbors_indexes.shape[0]
+
+    predictions = np.empty((n_rows, max_time))
+
+    for i in nb.prange(n_rows):
+        neighbors_index = neighbors_indexes[i]
+        neighbors_events = event[neighbors_index]
+        neighbors_times = times[neighbors_index]
+        neighbors_times_start = times_start[neighbors_index]
+        neighbors_kaplan_meier = get_kaplan_meier_survival_curve_with_left_censorship(
+            neighbors_events, neighbors_times, neighbors_times_start, max_time
         )
         predictions[i] = neighbors_kaplan_meier
 
