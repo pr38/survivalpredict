@@ -305,6 +305,11 @@ class StrataBuilderEncoder(_StrataBuilderBase, auto_wrap_output_keys=None):
 
             X = np.hstack((strata[:, None], X))
 
+        if len(X.shape) == 1:
+            self._n_cols_seen = 1
+        else:
+            self._n_cols_seen = X.shape[1]
+
         # the double unique trick allows us to deal with numpy object/string types with axis
         _, _, return_inverse1 = np.unique(X, return_index=True, return_inverse=True)
         _, return_index2, new_strata = np.unique(
@@ -312,6 +317,16 @@ class StrataBuilderEncoder(_StrataBuilderBase, auto_wrap_output_keys=None):
         )
 
         self.strata_keys_ = X[return_index2]
+
+        self.strata_to_key_map = dict(
+            zip(
+                [tuple(i) for i in self.strata_keys_.tolist()],
+                range(len(self.strata_keys_)),
+            )
+        )
+
+        self.is_fitted_ = True
+
         return new_strata
 
 
