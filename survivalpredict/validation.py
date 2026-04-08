@@ -12,7 +12,7 @@ from .metrics import (
     _integrated_brier_score_administrative,
     _integrated_brier_score_ipcw,
 )
-from ._data_validation import validate_survival_data, _as_int_np_array
+from ._data_validation import validate_survival_data, _as_int_np_array, _as_int
 
 __all__ = ["sur_cross_val_score", "sur_cross_validate"]
 
@@ -229,14 +229,17 @@ def sur_cross_validate(
     if return_train_score is None:
         return_train_score = False
     elif not isinstance(return_train_score, bool):
-        raise ValueError("return_train_score should be boolian")
+        raise ValueError("return_train_score should be boolean")
 
     if return_estimator is None:
         return_estimator = False
     elif not isinstance(return_estimator, bool):
-        raise ValueError("return_estimator should be boolian")
+        raise ValueError("return_estimator should be boolean")
 
     X, times, events = validate_survival_data(X, times, events)
+
+    if brier_score_max_time is not None:
+        brier_score_max_time = _as_int(brier_score_max_time, "max_time")
 
     if strata is not None:
         strata = _as_int_np_array(strata)
