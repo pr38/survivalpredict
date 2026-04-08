@@ -494,7 +494,7 @@ class ParametricDiscreteTimePH(_SurvivalPredictBase):
             max_time = _as_int(max_time, "max_time")
 
         times_of_intrest = np.arange(1, max_time + 1)
-        times_of_intrest_norm = _scale_times(times_of_intrest, max_time)
+        times_of_intrest_norm = _scale_times(times_of_intrest, self._max_time_observed)
 
         base_hazard_pdf_callable, _ = self._get_distribution_function_and_n_prams()
 
