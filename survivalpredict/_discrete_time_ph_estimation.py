@@ -2,12 +2,15 @@ import warnings
 from typing import Any, Callable, Literal, Optional
 
 import numpy as np
+
 # import pymc as pm  # type: ignore
 # import pymc_extras as pmx  # type: ignore
 # import pytensor
 # import pytensor.tensor as pt
 import scipy
-#from pytensor.tensor.variable import TensorVariable
+
+# from pytensor.tensor.variable import TensorVariable
+
 
 def _scale_times(
     times: np.ndarray[tuple[int], np.dtype[np.int64]], time_max: int
@@ -59,10 +62,12 @@ def _additive_chen_weibull_pdf(x, params):
 
 
 def _gamma_pdf(x, params):
-    if type(params) == pt.variable.TensorVariable:
-        gamma_a = pt.gamma(params[0])
-    else:
+    if type(params) == np.ndarray:
         gamma_a = scipy.special.gamma(params[0])
+    else:
+        import pytensor.tensor as pt
+
+        gamma_a = pt.gamma(params[0])
 
     return (x ** (params[0] - 1) * np.exp(-x / params[1])) / (
         gamma_a * (params[1] ** params[0])
@@ -96,7 +101,6 @@ def get_parametric_discrete_time_ph_model(
     import pymc as pm  # type: ignore
     import pytensor
     import pytensor.tensor as pt
-
 
     if max_time is None:
         max_time = times.max()
@@ -294,6 +298,7 @@ def predict_parametric_discrete_time_ph_model(
         np.ndarray[tuple[int], np.dtype[np.float64]]
         | np.ndarray[tuple[int, int], np.dtype[np.float64]]
     ),
+    max_time_train: int,
     max_time: int,
     base_hazard_pdf_callable: Callable[
         [
@@ -306,7 +311,7 @@ def predict_parametric_discrete_time_ph_model(
 ) -> np.ndarray[tuple[int, int], np.dtype[np.float64]]:
 
     times_of_intrest = np.arange(1, max_time + 1)
-    times_of_intrest_norm = _scale_times(times_of_intrest, max_time)
+    times_of_intrest_norm = _scale_times(times_of_intrest, max_time_train)
 
     relative_risk = np.exp(np.dot(X, coefs))
 

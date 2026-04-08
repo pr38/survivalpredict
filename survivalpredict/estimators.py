@@ -60,8 +60,8 @@ __all__ = [
     "KNeighborsSurvival",
     "CoxNNetPH",
     "AalenAdditiveHazard",
+    "CoxElasticNetPH",
 ]
-
 
 class _SurvivalPredictBase(BaseEstimator):
     def fit_predict(self, *args, **kwargs):
@@ -475,6 +475,7 @@ class ParametricDiscreteTimePH(_SurvivalPredictBase):
             X,
             self.coef_,
             self.base_hazard_prams_,
+            self._max_time_observed,
             max_time,
             base_hazard_pdf_callable,
             strata,
