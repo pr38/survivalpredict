@@ -4,6 +4,8 @@ A python packaged centered around Survival Analysis Statistical Learning, for pr
 
 survivalpredict makes some assumptions. The `times` array, the last known observed time of an individual before the event or censorship, is to be encoded as an integer. It is assumed that `time` starts with 1, and each interval of time is equally important. It is advised engineering time to max out at a few thousand; large values in the `time` array can trigger expensive compute on several estimators. The `events` array should be of boolean type, `True` if the individual expenses event(i.e., charged, death, conversion, etc.), and `False` otherwise. If the data is left-censored, in cases of time-varying effects or recurrent events, the smallest value of the `times_start` array should be 0, and the `times_start` array should be smaller than the `times` array. When calling `predict` on an estimator, columns of the output will correspond to all times till max time, starting at time 1.
 
+<a href=https://nbviewer.org/github/pr38/survivalpredict/blob/main/notebooks/survivalpredict_walkthrough_demo.ipynb>General walkthrough-demo</a>
+
 <a href=https://nbviewer.org/github/pr38/survivalpredict/blob/main/notebooks/demo_sklearn_interface.ipynb>Demo for interfacing with scikit learn</a>
 
 WIP. A pypi release should be released soon. In the meantime, the code in this repo can be installed via `pip install git+https://github.com/pr38/survivalpredict`. Ideally, before the first pypi release docstrings and example notebooks will be added. With the goal of finishing left-censoring support, sparse data support as well as  tree-based, ensemble, and exotic neural network  models further down the line. 
