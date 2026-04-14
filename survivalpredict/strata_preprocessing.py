@@ -60,13 +60,43 @@ class _StrataBuilderBase(TransformerMixin, BaseEstimator):
 
 
 class StrataBuilderDiscretizer(_StrataBuilderBase, auto_wrap_output_keys=None):
-    """Builds strata keys from numeric data. Adds onto existing strata, if
-    existing strata is passed in.
+    """
+    Builds strata keys from numeric data.
 
-    if predefined 'splits' are given, strata is build via the given bins
-    and 'n_splits' and 'strategy' is ignored. Otherwise 'n_splits' and
-    'strategy' is used to generate bins. Largly inspired by
-    scikitlearn's KBinsDiscretizer.
+    If predefined 'splits' are given, strata are built via the given bins
+    and 'n_splits' and 'strategy' are ignored. Otherwise 'n_splits' and
+    'strategy' is used to generate bins. Largely inspired by
+    scikitlearn's KBinsDiscretizer.Adds onto existing strata, if
+    existing strata are passed in.
+
+    Parameters
+    ----------
+    n_bins : int , default=5
+        The number of bins to produce. Raises ValueError if ``n_bins < 2``.
+
+        'n_bins' is ignored if 'splits' is not None.
+
+    strategy : {'uniform','quantile','kmeans'}, default='quantile'
+        Strategy used to define the widths of the bins.
+
+        - 'uniform': All bins in each feature have identical widths.
+        - 'quantile': All bins in each feature have the same number of points.
+        - 'kmeans': Values in each bin have the same nearest center of a 1D
+          k-means cluster.
+
+        'strategy' is ignored if 'splits' is not None.
+
+    splits : numeric array-like, default=None
+        Predefined splits to build bins.
+        If 'splits' is None, strategy and n_bins is ignored.
+
+    Attributes
+    ----------
+    _splits : ndarray of ndarray of shape (n_features,)
+        Splits used to generate bins.
+
+    _uses_strata : bool
+        True if fitted on preexising strata, False otherwise.
     """
 
     _parameter_constraints: dict = {
@@ -130,7 +160,31 @@ class StrataBuilderDiscretizer(_StrataBuilderBase, auto_wrap_output_keys=None):
 
     @_fit_context(prefer_skip_nested_validation=True)
     def fit(self, X, times=None, events=None, strata=None, check_input=True):
+        """
+        Learn the strata.
 
+        Parameters
+        ----------
+        X : array-like of shape (n_samples, n_features)
+            Data to be discretized.
+
+        times : array-like of shape n_samples, default=None
+            Ignored.
+
+        events : array-like of shape n_samples, default=None
+            Ignored.
+
+        strata : array-like of shape n_samples, default=None
+            Preexsting strata, the strata built will add onto the preexsting strata.
+
+        check_input : bool, default True
+            If True, runs checks and casting on data to ensure data is valid.
+        
+        Returns
+        -------
+        object
+            Returns the instance itself.
+        """
         self._uses_strata = strata is not None
 
         if check_input == True and self._uses_strata:
@@ -176,6 +230,28 @@ class StrataBuilderDiscretizer(_StrataBuilderBase, auto_wrap_output_keys=None):
         return self
 
     def transform(self, X, times=None, events=None, strata=None):
+        """
+        Discretize numerical data to build strata.
+
+        Parameters
+        ----------
+        X : array-like of shape (n_samples, n_features)
+            Data to be discretized.
+
+        times : array-like of shape n_samples, default=None
+            Ignored.
+
+        events : array-like of shape n_samples, default=None
+            Ignored.
+
+        strata : array-like of shape n_samples, default=None
+            Preexsting strata, the strata built will add onto the preexsting strata.
+
+        Returns
+        -------
+        array-like of shape (n_samples) , dtype=np.int64
+            Build strata.
+        """
 
         check_is_fitted(self)
 
@@ -209,6 +285,28 @@ class StrataBuilderDiscretizer(_StrataBuilderBase, auto_wrap_output_keys=None):
         return np.array([self._digitized_map[tuple(i)] for i in digitized.tolist()])
 
     def fit_transform(self, X, times=None, events=None, strata=None):
+        """
+        Fit and build strata.
+
+        Parameters
+        ----------
+        X : array-like of shape (n_samples, n_features)
+            Data to be discretized.
+
+        times : array-like of shape n_samples, default=None
+            Ignored.
+
+        events : array-like of shape n_samples, default=None
+            Ignored.
+
+        strata : array-like of shape n_samples, default=None
+            Preexsting strata, the strata built will add onto the preexsting strata.
+
+        Returns
+        -------
+        ndarray of shape (n_samples) , dtype=np.int64
+            Build strata.
+        """
 
         self.fit(X, times=None, events=None, strata=strata)
 
@@ -216,12 +314,40 @@ class StrataBuilderDiscretizer(_StrataBuilderBase, auto_wrap_output_keys=None):
 
 
 class StrataBuilderEncoder(_StrataBuilderBase, auto_wrap_output_keys=None):
-    """Builds strata keys from Categorical data.
+    """
+    Builds strata keys from categorical data.
 
-    If existing strata is passed in, it adds onto existing strata.
+    If existing strata are passed in, it adds onto existing strata.
+    StrataBuilderEncoder works on categorical data encoded in numerical or string types.
+    One or many columns of mixed types can be used.
     """
 
     def fit(self, X, times=None, events=None, strata=None, check_input=True):
+        """
+        Learn the strata.
+
+        Parameters
+        ----------
+        X : array-like of shape (n_samples, n_features)
+            Data to be discretized.
+
+        times : array-like of shape n_samples, default=None
+            Ignored.
+
+        events : array-like of shape n_samples, default=None
+            Ignored.
+
+        strata : array-like of shape n_samples, default=None
+            Preexsting strata, the strata built will add onto the preexsting strata.
+
+        check_input : bool, default True
+            If True, runs checks and casting on data to ensure data is valid.
+
+        Returns
+        -------
+        object
+            Returns the instance itself.
+        """
 
         self._uses_strata = strata is not None
 
@@ -260,6 +386,28 @@ class StrataBuilderEncoder(_StrataBuilderBase, auto_wrap_output_keys=None):
         return self
 
     def transform(self, X, times=None, events=None, strata=None):
+        """
+        Encode categorical data to build strata.
+
+        Parameters
+        ----------
+        X : array-like of shape (n_samples, n_features)
+            Data to be encoded.
+
+        times : array-like of shape n_samples, default=None
+            Ignored.
+
+        events : array-like of shape n_samples, default=None
+            Ignored.
+
+        strata : array-like of shape n_samples, default=None
+            Preexsting strata, the strata built will add onto the preexsting strata.
+
+        Returns
+        -------
+        ndarray of shape (n_samples)  , dtype=np.int64
+            Build strata.
+        """
         check_is_fitted(self)
 
         if self._uses_strata:
@@ -288,6 +436,28 @@ class StrataBuilderEncoder(_StrataBuilderBase, auto_wrap_output_keys=None):
         return np.array([self.strata_to_key_map[tuple(i)] for i in X.tolist()])
 
     def fit_transform(self, X, times=None, events=None, strata=None):
+        """
+        Fit and build strata.
+
+        Parameters
+        ----------
+        X : array-like of shape (n_samples, n_features)
+            Data to be encoded.
+
+        times : array-like of shape n_samples, default=None
+            Ignored.
+
+        events : array-like of shape n_samples, default=None
+            Ignored.
+
+        strata : array-like of shape n_samples, default=None
+            Preexsting strata, the strata built will add onto the preexsting strata.
+
+        Returns
+        -------
+        ndarray of shape (n_samples) , dtype=np.int64
+            Build strata.
+        """
 
         self._uses_strata = strata is not None
 
@@ -348,12 +518,23 @@ class StrataBuilderProtocal(Protocol):
 class StrataColumnTransformer(
     TransformerMixin, _BaseComposition, auto_wrap_output_keys=None
 ):
-    """Applies StrataBuilders to columns of an array or DataFrame.
+    """
+    Applies StrataBuilders to columns of an array or DataFrame.
 
-    Different columns or column subsets of the input are separately ran
-    through diffrent StrataBuilders. If there are pre-existing strata, it
-    will be added to the created strata. After the strata is build,
-    columns or column subsets is then removed from the feature set.
+    Functions much like scikit-learn's ColumnTransformer class, but for survivalpredict's
+    StrataBuilders instead of scikit-learn's Transformers. Different columns or column subsets
+    of the input are separately run through different StrataBuilders. If there are pre-existing strata,
+    it will be added to the created strata. After the strata are built, columns used for building said strata are
+    then removed from the feature set. Works on Numpy arrays as well as  Pandas/Polars dataframes.
+
+    Designed to be used with 'survivalpredict.pipeline.SklearnSurvivalPipeline'.
+    The columns in strata_transformers tuples are exposed as parameters that can be tuned.
+    This is useful in model selection, where different strata are tried. Said prams are named as such '{name}_columns'.
+
+    Parameters
+    ----------
+    strata_transformers : list of tuples
+        List of (name, strat builder object, columns) tuples specifying the name, strat builder object and columns  used for building the strata.
     """
 
     _parameter_constraints: dict = {"strata_transformers": [list]}
@@ -429,6 +610,31 @@ class StrataColumnTransformer(
 
     @_fit_context(prefer_skip_nested_validation=True)
     def fit(self, X, times=None, events=None, strata=None, check_input=True):
+        """
+        Learn the strata.
+
+        Parameters
+        ----------
+        X : array-like of shape (n_samples, n_features)
+            Dataset used for building strata.
+
+        times : array-like of shape n_samples, default=None
+            Ignored.
+
+        events : array-like of shape n_samples, default=None
+            Ignored.
+
+        strata : array-like of shape n_samples, default=None
+            Preexsting strata, the strata built will add onto the preexsting strata.
+
+        check_input : bool, default True
+            If True, runs checks and casting on data to ensure data is valid.
+
+        Returns
+        -------
+        self
+            Returns the instance itself.
+        """
 
         self._validate_strata_transformers()
 
@@ -450,6 +656,41 @@ class StrataColumnTransformer(
 
     @_fit_context(prefer_skip_nested_validation=True)
     def fit_transform(self, X, times=None, events=None, strata=None, check_input=True):
+        """
+        Fit and build strata.
+
+        Parameters
+        ----------
+        X : array-like of shape (n_samples, n_features)
+            Data to be discretized.
+
+        times : array-like of shape n_samples, default=None
+            Ignored.
+
+        events : array-like of shape n_samples, default=None
+            Ignored.
+
+        strata : array-like of shape n_samples, default=None
+            Preexsting strata, the strata built will add onto the preexsting strata.
+
+        check_input : bool, default True
+            If True, runs checks and casting on data to ensure data is valid.
+
+        Returns
+        -------
+        X : ndarray of shape (n_samples, ???)
+            The feature set without the columns used for strata.
+
+        times : ndarray of shape (n_samples)
+            The same times array passed into method.
+
+        events : ndarray of shape (n_samples)
+            The same events array passed into method.
+
+        strata : ndarray of shape (n_samples) , dtype=np.int64
+            The strata build from the original feature set.
+        """
+
 
         self._validate_strata_transformers()
 
@@ -483,6 +724,41 @@ class StrataColumnTransformer(
         return X, times, events, strata
 
     def transform(self, X, times=None, events=None, strata=None, check_input=True):
+        """
+        Build strata.
+
+        Parameters
+        ----------
+        X : array-like of shape (n_samples, n_features)
+            Dataset used for building strata.
+
+        times : array-like of shape n_samples, default=None
+            Ignored.
+
+        events : array-like of shape n_samples, default=None
+            Ignored.
+
+        strata : array-like of shape n_samples, default=None
+            Preexsting strata, the strata built will add onto the preexsting strata.
+
+        check_input : bool, default True
+            If True, runs checks and casting on data to ensure data is valid.
+
+        Returns
+        -------
+        X : ndarray of shape (n_samples, ???)
+            The feature set without the columns used for strata.
+
+        times : ndarray of shape (n_samples)
+            The same times array passed into method.
+
+        events : ndarray of shape (n_samples)
+            The same events array passed into method.
+
+        strata : ndarray of shape (n_samples) , dtype=np.int64
+            The strata build from the original feature set.
+        """
+
         check_is_fitted(self)
 
         selections = []
@@ -607,6 +883,22 @@ def make_strata_column_transformer(
         StrataBuilderProtocal, Sequence[Any] | int | str | slice
     ],
 ) -> StrataColumnTransformer:
+    """
+    Construct a StrataColumnTransformer from the given transformers and columns.
+
+    Functions much like scikit-learn's make_column_transformer class, but for survivalpredict's
+    StrataBuilders instead of scikit-learn's Transformers. A utility for building StrataColumnTransformer without naming strata builders.
+
+    Parameters
+    ----------
+    strata_transformers : list of tuples
+        List of (strat builder object, columns) tuples specifying strat builder object and columns used for building the strata.
+
+    Returns
+    -------
+    StrataColumnTransformer
+            Returns a StrataColumnTransformer object.
+    """
     estimators, selections = zip(*strata_transformer_columns)
 
     names = _get_estimator_names(estimators)
