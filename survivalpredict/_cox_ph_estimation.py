@@ -53,6 +53,33 @@ def self_outterproduct_mul_groupby_time(X, p_exp, time_return_inverse, max_time_
     return output
 
 
+bincount_reverse_cumsum_along_axis_sig = nb.types.Array(
+    nb.types.float64, 2, "C", False, aligned=True
+)(
+    nb.types.Array(nb.types.float64, 2, "C", False, aligned=True),
+    nb.types.Array(nb.types.int64, 1, "C", False, aligned=True),
+    nb.types.int64,
+)
+
+
+@nb.njit(bincount_reverse_cumsum_along_axis_sig, cache=True)
+def bincount_reverse_cumsum_along_axis(XxXb, time_return_inverse, n_unique_times):
+    out = np.zeros((n_unique_times, XxXb.shape[1]))
+    for i in range(XxXb.shape[1]):
+        out[:, i] = np.flip(
+            np.cumsum(
+                np.flip(
+                    np.bincount(
+                        time_return_inverse,
+                        weights=XxXb[:, i],
+                        minlength=n_unique_times,
+                    )
+                )
+            )
+        )
+    return out
+
+
 def breslow_neg_log_likelihood_loss_jacobian_hessian(
     weights, X, event, time_return_inverse, n_unique_times, event_counts_at_times
 ):
@@ -70,19 +97,14 @@ def breslow_neg_log_likelihood_loss_jacobian_hessian(
 
     XxXb = np.multiply(X, p_exp[:, np.newaxis])
 
-    XxXb_at_Xt_at_time = np.apply_along_axis(
-        lambda a: np.bincount(time_return_inverse, weights=a, minlength=n_unique_times),
-        0,
-        XxXb,
+    # XxXb_at_Xt_at_time_cumsum = np.apply_along_axis(
+    #     lambda a: reverse_cumsum(np.bincount(time_return_inverse, weights=a, minlength=n_unique_times)),
+    #     0,
+    #     XxXb,
+    # )
+    XxXb_at_Xt_at_time_cumsum = bincount_reverse_cumsum_along_axis(
+        XxXb, time_return_inverse, n_unique_times
     )
-
-    del XxXb
-
-    XxXb_at_Xt_at_time_cumsum = np.apply_along_axis(
-        reverse_cumsum, 0, XxXb_at_Xt_at_time
-    )
-
-    del XxXb_at_Xt_at_time
 
     XxXb_at_Xt_at_index = XxXb_at_Xt_at_time_cumsum[time_return_inverse]
 

@@ -15,7 +15,7 @@ get_breslow_neg_log_likelihood_with_elasticnet_penalty_signature = nb.types.floa
 )
 
 
-@nb.njit(get_breslow_neg_log_likelihood_with_elasticnet_penalty_signature)
+@nb.njit(get_breslow_neg_log_likelihood_with_elasticnet_penalty_signature, cache=True)
 def get_breslow_neg_log_likelihood_with_elasticnet_penalty(
     weights,
     X,
@@ -76,7 +76,7 @@ train_cox_elastic_net_signature = nb.types.Tuple(
 )
 
 
-@nb.njit(train_cox_elastic_net_signature)
+@nb.njit(train_cox_elastic_net_signature, cache=True)
 def train_cox_elastic_net_regularization_paths(
     X: np.ndarray,
     times: np.ndarray,
