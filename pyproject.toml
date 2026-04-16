@@ -28,7 +28,7 @@ test = [
 ]
 docs = [
     "numpydoc>=1.10.0",
-    "sphinx>=9.0.4",
+    "sphinx==8.2.3",
 ]
 
 [build-system]
