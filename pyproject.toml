@@ -26,13 +26,12 @@ test = [
     "pytest",
     "polars"
 ]
-
 docs = [
-    "sphinx=9.1.0",
-    "numpydoc=1.10.0",
+    "numpydoc>=1.10.0",
+    "sphinx>=9.0.4",
 ]
-
 
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
+
