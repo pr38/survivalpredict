@@ -7,6 +7,7 @@ api
    estimators
    metrics
    model_selection
+   pipeline
    strata_preprocessing
    validation
 
