@@ -38,6 +38,7 @@ split_and_preprocess_data_by_strata_siganture = nb.types.Tuple(
         nb.types.List(nb.types.Array(nb.types.float64, 1, "C")),
         nb.types.List(nb.types.int64),
         nb.types.List(nb.types.Array(nb.types.int64, 1, "C")),
+        nb.types.List(nb.types.Array(nb.types.int64, 1, "C")),
     )
 )(
     nb.types.Array(nb.types.float64, 2, "C", False, aligned=True),
@@ -45,11 +46,14 @@ split_and_preprocess_data_by_strata_siganture = nb.types.Tuple(
     nb.types.Array(nb.types.bool_, 1, "C", False, aligned=True),
     nb.types.Array(nb.types.int64, 1, "C", False, aligned=True),
     nb.types.Array(nb.types.int64, 1, "C", False, aligned=True),
+    nb.types.bool_,
 )
 
 
 @nb.njit(split_and_preprocess_data_by_strata_siganture, cache=True)
-def split_and_preprocess_data_by_strata(X, times, events, strata, times_start):
+def split_and_preprocess_data_by_strata(
+    X, times, events, strata, times_start, has_times_start: bool
+):
 
     seen_strata, stata_index = _unique_with_return_inverse(strata)
     n_strata = len(seen_strata)
@@ -60,6 +64,7 @@ def split_and_preprocess_data_by_strata(X, times, events, strata, times_start):
     X_strata = []
     times_strata = []
     time_return_inverse_strata = []
+    time_start_return_inverse_strata = []
     n_unique_times_strata = []
     event_counts_at_times_strata = []
     times_start_strata = []
@@ -73,8 +78,23 @@ def split_and_preprocess_data_by_strata(X, times, events, strata, times_start):
         times_s = times[mask]
         times_strata.append(times_s)
 
-        unique_times_s, time_return_inverse_s = _unique_with_return_inverse(times_s)
-        time_return_inverse_strata.append(time_return_inverse_s)
+        if has_times_start:
+
+            all_times = np.concatenate((times_start, times))
+            unique_times_s, unique_times_return_inverse = _unique_with_return_inverse(
+                all_times
+            )
+
+            time_return_inverse_s = unique_times_return_inverse[len(times) :]
+            time_start_return_inverse_s = unique_times_return_inverse[
+                : len(times_start)
+            ]
+
+            time_return_inverse_strata.append(time_return_inverse_s)
+            time_start_return_inverse_strata.append(time_start_return_inverse_s)
+        else:
+            unique_times_s, time_return_inverse_s = _unique_with_return_inverse(times_s)
+            time_return_inverse_strata.append(time_return_inverse_s)
 
         n_unique_times_s = len(unique_times_s)
         n_unique_times_strata.append(n_unique_times_s)
@@ -95,10 +115,11 @@ def split_and_preprocess_data_by_strata(X, times, events, strata, times_start):
         event_counts_at_times_strata,
         n_unique_times_strata,
         times_start_strata,
+        time_start_return_inverse_strata,
     )
 
 
-def preprocess_data_for_cox_ph(X, times, events, strata=None):
+def preprocess_data_for_cox_ph(X, times, events, strata=None, times_start=None):
     if strata is not None:
         (
             n_strata,
@@ -109,17 +130,40 @@ def preprocess_data_for_cox_ph(X, times, events, strata=None):
             time_return_inverse_strata,
             event_counts_at_times_strata,
             n_unique_times_strata,
-            _,
+            times_start_strata,
+            time_start_return_inverse_strata,
         ) = split_and_preprocess_data_by_strata(
-            X, times, events, strata, np.zeros(X.shape[0], dtype=np.int64)
+            X,
+            times,
+            events,
+            strata,
+            np.zeros(X.shape[0], dtype=np.int64),
+            times_start=times_start,
+            has_times_start=True,
         )
 
     else:
-        unique_times, time_return_inverse = np.unique(times, return_inverse=True)
-        n_unique_times = len(unique_times)
+        if times_start is None:
+            unique_times, time_return_inverse = np.unique(times, return_inverse=True)
+            event_counts_at_times = np.bincount(
+                time_return_inverse, weights=events.astype(np.int64)
+            )
+            time_start_return_inverse=time_return_inverse
+        
+        else:
+            all_times = np.concat((times_start, times))
+            unique_times, unique_times_return_inverse = np.unique(
+                all_times, return_inverse=True
+            )
+
+            time_return_inverse = unique_times_return_inverse[len(times) :]
+            time_start_return_inverse = unique_times_return_inverse[: len(times_start)]
+
+
         event_counts_at_times = np.bincount(
             time_return_inverse, weights=events.astype(np.int64)
         )
+        n_unique_times = len(unique_times)
         n_strata = 0
         seen_strata = None
         X_strata = [X]
@@ -129,6 +173,8 @@ def preprocess_data_for_cox_ph(X, times, events, strata=None):
         event_counts_at_times_strata = [event_counts_at_times]
         n_strata = 1
         times_strata = [times]
+        times_start_strata = [times_start]
+        time_start_return_inverse_strata = [time_start_return_inverse]
 
     return (
         n_strata,
@@ -139,6 +185,8 @@ def preprocess_data_for_cox_ph(X, times, events, strata=None):
         time_return_inverse_strata,
         n_unique_times_strata,
         event_counts_at_times_strata,
+        times_start_strata,
+        time_start_return_inverse_strata,
     )
 
 

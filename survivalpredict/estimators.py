@@ -135,7 +135,11 @@ class CoxProportionalHazard(_SurvivalPredictBase):
             time_return_inverse_strata,
             n_unique_times_strata,
             event_counts_at_times_strata,
+            times_start_strata,
+            time_start_return_inverse_strata,
         ) = preprocess_data_for_cox_ph(X, times, events, strata)
+
+
 
         if self.ties == "breslow":
 
@@ -621,8 +625,9 @@ class KaplanMeierSurvivalEstimator(_SurvivalPredictBase):
                 _,
                 _,
                 times_start_strata,
+                _,
             ) = split_and_preprocess_data_by_strata(
-                np.ones((X.shape[0], 1)), times, events, strata, times_start
+                np.ones((X.shape[0], 1)), times, events, strata, times_start,has_times_start=False
             )
 
             self._uses_strata = True
@@ -900,6 +905,8 @@ class CoxNNetPH(_SurvivalPredictBase):
             time_return_inverse_strata,
             n_unique_times_strata,
             _,
+            _,
+            _
         ) = preprocess_data_for_cox_ph(X, times, events, strata)
 
         if hasattr(self, "coef_"):
