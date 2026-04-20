@@ -18,6 +18,9 @@ from ._base_hazard import _get_breslow_base_hazard
 from ._cox_net_ph import get_relative_risk_from_cox_net_ph_weights, train_cox_net_ph
 from ._cox_ph_elastic_net import train_cox_elastic_net_regularization_paths
 from ._cox_ph_estimation import train_cox_ph_breslow, train_cox_ph_efron
+from ._cox_ph_estimation_left_cenership_non_newton import (
+    train_cox_ph_breslow_with_left_censorship_scipy_minimize,
+)
 from ._data_validation import (
     _as_int,
     _as_int_np_array,
@@ -63,6 +66,7 @@ __all__ = [
     "CoxElasticNetPH",
 ]
 
+
 class _SurvivalPredictBase(BaseEstimator):
     def fit_predict(self, *args, **kwargs):
         predict_kwargs = kwargs.copy()
@@ -104,13 +108,27 @@ class CoxProportionalHazard(_SurvivalPredictBase):
         self.tol = tol
 
     @_fit_context(prefer_skip_nested_validation=True)
-    def fit(self, X, times, events, strata=None, weights=None, check_input=True):
+    def fit(
+        self,
+        X: np.ndarray[tuple[int, int], np.dtype[np.float64]],
+        times: np.ndarray[tuple[int], np.dtype[np.int64]],
+        events: np.ndarray[tuple[int], np.dtype[np.bool_]],
+        strata: Optional[np.ndarray[tuple[int], np.dtype[np.int64]]] = None,
+        check_input: bool = True,
+        times_start: Optional[np.ndarray[tuple[int], np.dtype[np.int64]]] = None,
+    ):
+
+        use_left_censorship = times_start is not None
+
 
         if check_input:
             X, times, events = validate_survival_data(X, times, events)
 
             if strata is not None:
                 strata = _as_int_np_array(strata, "strata")
+
+            if use_left_censorship:
+                times_start = validate_times_start_array(times_start, times)
 
         self._max_time_observed = np.max(times)
 
@@ -126,60 +144,88 @@ class CoxProportionalHazard(_SurvivalPredictBase):
             events = events[argsort]
             X = X[argsort]
 
-        (
-            n_strata,
-            seen_strata,
-            X_strata,
-            times_strata,
-            events_strata,
-            time_return_inverse_strata,
-            n_unique_times_strata,
-            event_counts_at_times_strata,
-            times_start_strata,
-            time_start_return_inverse_strata,
-        ) = preprocess_data_for_cox_ph(X, times, events, strata)
+        if use_left_censorship:
+            (
+                n_strata,
+                seen_strata,
+                X_strata,
+                times_strata,
+                events_strata,
+                time_return_inverse_strata,
+                n_unique_times_strata,
+                event_counts_at_times_strata,
+                _,
+                time_start_return_inverse_strata,
+            ) = preprocess_data_for_cox_ph(X, times, events, strata, times_start)
 
-
-
-        if self.ties == "breslow":
-
-            coefs, loss = train_cox_ph_breslow(
+            coefs, loss = train_cox_ph_breslow_with_left_censorship_scipy_minimize(
                 X_strata,
                 events_strata,
                 n_unique_times_strata,
                 event_counts_at_times_strata,
                 time_return_inverse_strata,
+                time_start_return_inverse_strata,
                 n_strata,
                 self.alpha,
                 self.l1_ratio,
                 coefs,
-                self.max_iter,
                 self.tol,
+                None,  # to do, expose scipy method
             )
 
-        elif self.ties == "efron":
-            l_div_m_stata = get_l_div_m_stata_per_strata(
-                events_strata,
-                times_strata,
-                time_return_inverse_strata,
-                n_unique_times_strata,
-            )
-
-            coefs, loss = train_cox_ph_efron(
-                n_strata,
-                X_strata,
-                events_strata,
-                n_unique_times_strata,
-                l_div_m_stata,
-                time_return_inverse_strata,
-                self.alpha,
-                self.l1_ratio,
-                coefs,
-                self.max_iter,
-                self.tol,
-            )
         else:
-            raise ValueError("unknow ties")
+            (
+                n_strata,
+                seen_strata,
+                X_strata,
+                times_strata,
+                events_strata,
+                time_return_inverse_strata,
+                n_unique_times_strata,
+                event_counts_at_times_strata,
+                _,
+                _,
+            ) = preprocess_data_for_cox_ph(X, times, events, strata)
+
+            if self.ties == "breslow":
+
+                coefs, loss = train_cox_ph_breslow(
+                    X_strata,
+                    events_strata,
+                    n_unique_times_strata,
+                    event_counts_at_times_strata,
+                    time_return_inverse_strata,
+                    n_strata,
+                    self.alpha,
+                    self.l1_ratio,
+                    coefs,
+                    self.max_iter,
+                    self.tol,
+                )
+
+            elif self.ties == "efron":
+                l_div_m_stata = get_l_div_m_stata_per_strata(
+                    events_strata,
+                    times_strata,
+                    time_return_inverse_strata,
+                    n_unique_times_strata,
+                )
+
+                coefs, loss = train_cox_ph_efron(
+                    n_strata,
+                    X_strata,
+                    events_strata,
+                    n_unique_times_strata,
+                    l_div_m_stata,
+                    time_return_inverse_strata,
+                    self.alpha,
+                    self.l1_ratio,
+                    coefs,
+                    self.max_iter,
+                    self.tol,
+                )
+            else:
+                raise ValueError("unknow ties")
 
         self.coef_ = coefs
         self.n_log_likelihood = loss
@@ -627,7 +673,12 @@ class KaplanMeierSurvivalEstimator(_SurvivalPredictBase):
                 times_start_strata,
                 _,
             ) = split_and_preprocess_data_by_strata(
-                np.ones((X.shape[0], 1)), times, events, strata, times_start,has_times_start=False
+                np.ones((X.shape[0], 1)),
+                times,
+                events,
+                strata,
+                times_start,
+                has_times_start=False,
             )
 
             self._uses_strata = True
@@ -906,7 +957,7 @@ class CoxNNetPH(_SurvivalPredictBase):
             n_unique_times_strata,
             _,
             _,
-            _
+            _,
         ) = preprocess_data_for_cox_ph(X, times, events, strata)
 
         if hasattr(self, "coef_"):

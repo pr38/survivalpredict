@@ -148,7 +148,7 @@ get_breslow_jacobian_with_left_censorship_with_strata_sig = nb.types.Array(
 )
 
 
-@nb.njit(get_breslow_jacobian_with_left_censorship_with_strata_sig)
+@nb.njit(get_breslow_jacobian_with_left_censorship_with_strata_sig,cache=True)
 def get_breslow_jacobian_with_left_censorship_with_strata(
     weights,
     X_strata,
