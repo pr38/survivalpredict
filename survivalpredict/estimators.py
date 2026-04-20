@@ -120,7 +120,6 @@ class CoxProportionalHazard(_SurvivalPredictBase):
 
         use_left_censorship = times_start is not None
 
-
         if check_input:
             X, times, events = validate_survival_data(X, times, events)
 
@@ -678,7 +677,7 @@ class KaplanMeierSurvivalEstimator(_SurvivalPredictBase):
                 events,
                 strata,
                 times_start,
-                has_times_start=False,
+                uses_left_censorship,
             )
 
             self._uses_strata = True

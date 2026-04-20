@@ -3,7 +3,7 @@ import numpy as np
 from scipy.optimize import minimize
 
 
-@nb.njit
+@nb.njit(cache=True)
 def at_risk_per_time_with_start_times(
     p_exp, time_end_return_inverse, time_start_return_inverse, n_unique_times
 ):
@@ -17,7 +17,7 @@ def at_risk_per_time_with_start_times(
     return output
 
 
-@nb.njit
+@nb.njit(cache=True)
 def bincount_reverse_cumsum_along_axis(
     XxXb, time_end_return_inverse, time_start_return_inverse, n_unique_times
 ):
@@ -30,7 +30,7 @@ def bincount_reverse_cumsum_along_axis(
     return output
 
 
-@nb.njit
+@nb.njit(cache=True)
 def get_breslow_n_log_likeliehood_with_left_censorship(
     weights,
     X,
@@ -95,7 +95,7 @@ def get_breslow_n_log_likeliehood_with_left_censorship_with_strata(
     return loss
 
 
-@nb.njit
+@nb.njit(cache=True)
 def get_breslow_jacobian_with_left_censorship(
     weights,
     X,
@@ -148,7 +148,7 @@ get_breslow_jacobian_with_left_censorship_with_strata_sig = nb.types.Array(
 )
 
 
-@nb.njit(get_breslow_jacobian_with_left_censorship_with_strata_sig,cache=True)
+@nb.njit(get_breslow_jacobian_with_left_censorship_with_strata_sig, cache=True)
 def get_breslow_jacobian_with_left_censorship_with_strata(
     weights,
     X_strata,

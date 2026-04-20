@@ -78,16 +78,19 @@ def split_and_preprocess_data_by_strata(
         times_s = times[mask]
         times_strata.append(times_s)
 
+        times_start_s = times_start[mask]
+        times_start_strata.append(times_start_s)
+
         if has_times_start:
 
-            all_times = np.concatenate((times_start, times))
+            all_times = np.concatenate((times_start_s, times_s))
             unique_times_s, unique_times_return_inverse = _unique_with_return_inverse(
                 all_times
             )
 
-            time_return_inverse_s = unique_times_return_inverse[len(times) :]
+            time_return_inverse_s = unique_times_return_inverse[len(times_s) :]
             time_start_return_inverse_s = unique_times_return_inverse[
-                : len(times_start)
+                : len(times_start_s)
             ]
 
             time_return_inverse_strata.append(time_return_inverse_s)
@@ -102,8 +105,6 @@ def split_and_preprocess_data_by_strata(
         event_counts_at_times_s = np.bincount(time_return_inverse_s, weights=events_s)
 
         event_counts_at_times_strata.append(event_counts_at_times_s)
-
-        times_start_strata.append(times_start[mask])
 
     return (
         n_strata,
@@ -137,9 +138,8 @@ def preprocess_data_for_cox_ph(X, times, events, strata=None, times_start=None):
             times,
             events,
             strata,
-            np.zeros(X.shape[0], dtype=np.int64),
-            times_start=times_start,
-            has_times_start=True,
+            times_start,
+            times_start is not None,
         )
 
     else:
@@ -148,8 +148,8 @@ def preprocess_data_for_cox_ph(X, times, events, strata=None, times_start=None):
             event_counts_at_times = np.bincount(
                 time_return_inverse, weights=events.astype(np.int64)
             )
-            time_start_return_inverse=time_return_inverse
-        
+            time_start_return_inverse = time_return_inverse
+
         else:
             all_times = np.concat((times_start, times))
             unique_times, unique_times_return_inverse = np.unique(
@@ -158,7 +158,6 @@ def preprocess_data_for_cox_ph(X, times, events, strata=None, times_start=None):
 
             time_return_inverse = unique_times_return_inverse[len(times) :]
             time_start_return_inverse = unique_times_return_inverse[: len(times_start)]
-
 
         event_counts_at_times = np.bincount(
             time_return_inverse, weights=events.astype(np.int64)
