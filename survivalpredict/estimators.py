@@ -18,8 +18,9 @@ from ._base_hazard import _get_breslow_base_hazard
 from ._cox_net_ph import get_relative_risk_from_cox_net_ph_weights, train_cox_net_ph
 from ._cox_ph_elastic_net import train_cox_elastic_net_regularization_paths
 from ._cox_ph_estimation import train_cox_ph_breslow, train_cox_ph_efron
-from ._cox_ph_estimation_left_cenership_non_newton import (
+from ._cox_ph_estimation_left_censorship import (
     train_cox_ph_breslow_with_left_censorship_scipy_minimize,
+    train_cox_ph_breslow_left_censorship,
 )
 from ._data_validation import (
     _as_int,
@@ -157,7 +158,7 @@ class CoxProportionalHazard(_SurvivalPredictBase):
                 time_start_return_inverse_strata,
             ) = preprocess_data_for_cox_ph(X, times, events, strata, times_start)
 
-            coefs, loss = train_cox_ph_breslow_with_left_censorship_scipy_minimize(
+            coefs, loss = train_cox_ph_breslow_left_censorship(
                 X_strata,
                 events_strata,
                 n_unique_times_strata,
@@ -168,9 +169,24 @@ class CoxProportionalHazard(_SurvivalPredictBase):
                 self.alpha,
                 self.l1_ratio,
                 coefs,
+                self.max_iter,
                 self.tol,
-                None,  # to do, expose scipy method
             )
+
+            # coefs, loss = train_cox_ph_breslow_with_left_censorship_scipy_minimize(
+            #     X_strata,
+            #     events_strata,
+            #     n_unique_times_strata,
+            #     event_counts_at_times_strata,
+            #     time_return_inverse_strata,
+            #     time_start_return_inverse_strata,
+            #     n_strata,
+            #     self.alpha,
+            #     self.l1_ratio,
+            #     coefs,
+            #     self.tol,
+            #     None,  # to do, expose scipy method
+            # )
 
         else:
             (
