@@ -7,9 +7,9 @@ See <a href=https://survivalpredict.readthedocs.io/en/latest/index.html>document
 WIP. A pypi release should be released soon. In the meantime, the code in this repo can be installed via `pip install git+https://github.com/pr38/survivalpredict`. Ideally, before the first pypi release docstrings and example notebooks will be added. With the goal of finishing left-censoring support, sparse data support as well as  tree-based, ensemble, and exotic neural network  models further down the line. 
 
 
-<a href=https://nbviewer.org/github/pr38/survivalpredict/blob/main/notebooks/survivalpredict_walkthrough_demo.ipynb>General walkthrough-demo</a>
+<a href=https://github.com/pr38/survivalpredict/blob/main/notebooks/demo_sklearn_interface.html>General walkthrough-demo</a>
 
-<a href=https://nbviewer.org/github/pr38/survivalpredict/blob/main/notebooks/demo_sklearn_interface.ipynb>Demo for interfacing with scikit learn</a>
+<a href=https://github.com/pr38/survivalpredict/blob/main/notebooks/demo_sklearn_interface.html>Demo for interfacing with scikit learn</a>
 
 
 
