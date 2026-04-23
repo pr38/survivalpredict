@@ -12,50 +12,34 @@ from sklearn.utils.validation import check_is_fitted
 
 from ._allen_additive import (
     _estimate_allen_additive_hazard_time_weights,
-    _generate_hazards_at_times_from_allen_additive_hazard_weights,
-)
+    _generate_hazards_at_times_from_allen_additive_hazard_weights)
 from ._base_hazard import _get_breslow_base_hazard
-from ._cox_net_ph import get_relative_risk_from_cox_net_ph_weights, train_cox_net_ph
+from ._cox_net_ph import (get_relative_risk_from_cox_net_ph_weights,
+                          train_cox_net_ph)
 from ._cox_ph_elastic_net import train_cox_elastic_net_regularization_paths
 from ._cox_ph_estimation import train_cox_ph_breslow, train_cox_ph_efron
 from ._cox_ph_estimation_left_censorship import (
-    train_cox_ph_breslow_with_left_censorship_scipy_minimize,
     train_cox_ph_breslow_left_censorship,
-)
-from ._data_validation import (
-    _as_int,
-    _as_int_np_array,
-    _as_numeric_np_array,
-    validate_survival_data,
-    validate_times_start_array,
-)
+    train_cox_ph_breslow_with_left_censorship_scipy_minimize,
+    train_cox_ph_efron_left_censorship)
+from ._data_validation import (_as_int, _as_int_np_array, _as_numeric_np_array,
+                               validate_survival_data,
+                               validate_times_start_array)
 from ._discrete_time_ph_estimation import (
-    _additive_chen_weibull_pdf,
-    _chen_pdf,
-    _gamma_pdf,
-    _gompertz_pdf,
-    _log_logistic_pdf,
-    _log_normal_pdf,
-    _scale_times,
-    _weibull_pdf,
+    _additive_chen_weibull_pdf, _chen_pdf, _gamma_pdf, _gompertz_pdf,
+    _log_logistic_pdf, _log_normal_pdf, _scale_times, _weibull_pdf,
     get_parametric_discrete_time_ph_model,
     predict_parametric_discrete_time_ph_model,
-    train_parametric_discrete_time_ph_model,
-)
+    train_parametric_discrete_time_ph_model)
 from ._neighbors import (
     build_kaplan_meier_survival_curve_from_neighbors_indexes,
-    build_kaplan_meier_survival_curve_from_neighbors_indexes_with_left_censoring,
-)
+    build_kaplan_meier_survival_curve_from_neighbors_indexes_with_left_censoring)
 from ._nonparametric import (
     get_kaplan_meier_survival_curve,
-    get_kaplan_meier_survival_curve_with_left_censorship,
-)
-from ._stratification import (
-    get_l_div_m_stata_per_strata,
-    map_new_strata,
-    preprocess_data_for_cox_ph,
-    split_and_preprocess_data_by_strata,
-)
+    get_kaplan_meier_survival_curve_with_left_censorship)
+from ._stratification import (get_l_div_m_stata_per_strata, map_new_strata,
+                              preprocess_data_for_cox_ph,
+                              split_and_preprocess_data_by_strata)
 
 __all__ = [
     "CoxProportionalHazard",
@@ -143,6 +127,8 @@ class CoxProportionalHazard(_SurvivalPredictBase):
             times = times[argsort]
             events = events[argsort]
             X = X[argsort]
+            if use_left_censorship:
+                times_start = times_start[argsort]
 
         if use_left_censorship:
             (
@@ -158,37 +144,49 @@ class CoxProportionalHazard(_SurvivalPredictBase):
                 time_start_return_inverse_strata,
             ) = preprocess_data_for_cox_ph(X, times, events, strata, times_start)
 
-            coefs, loss = train_cox_ph_breslow_left_censorship(
-                X_strata,
-                events_strata,
-                n_unique_times_strata,
-                event_counts_at_times_strata,
-                time_return_inverse_strata,
-                time_start_return_inverse_strata,
-                n_strata,
-                self.alpha,
-                self.l1_ratio,
-                coefs,
-                self.max_iter,
-                self.tol,
+            l_div_m_stata = get_l_div_m_stata_per_strata(
+            events_strata,
+            times_strata,
+            time_return_inverse_strata,
+            n_unique_times_strata,
             )
 
-            # coefs, loss = train_cox_ph_breslow_with_left_censorship_scipy_minimize(
-            #     X_strata,
-            #     events_strata,
-            #     n_unique_times_strata,
-            #     event_counts_at_times_strata,
-            #     time_return_inverse_strata,
-            #     time_start_return_inverse_strata,
-            #     n_strata,
-            #     self.alpha,
-            #     self.l1_ratio,
-            #     coefs,
-            #     self.tol,
-            #     None,  # to do, expose scipy method
-            # )
+            if self.ties == "efron":
+                coefs, loss = train_cox_ph_efron_left_censorship(
+                    n_strata,
+                    X_strata,
+                    events_strata,
+                    n_unique_times_strata,
+                    l_div_m_stata,
+                    time_return_inverse_strata,
+                    time_start_return_inverse_strata,
+                    self.alpha,
+                    self.l1_ratio,
+                    coefs,
+                    self.max_iter,
+                    self.tol,
+                )
+            elif self.ties == "breslow":
 
-        else:
+                coefs, loss = train_cox_ph_breslow_left_censorship(
+                    X_strata,
+                    events_strata,
+                    n_unique_times_strata,
+                    event_counts_at_times_strata,
+                    time_return_inverse_strata,
+                    time_start_return_inverse_strata,
+                    n_strata,
+                    self.alpha,
+                    self.l1_ratio,
+                    coefs,
+                    self.max_iter,
+                    self.tol,
+                )
+
+            else:
+                raise ValueError("unknow ties")
+
+        else: #no left censorship
             (
                 n_strata,
                 seen_strata,
