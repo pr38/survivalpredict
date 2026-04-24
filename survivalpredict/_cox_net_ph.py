@@ -74,11 +74,17 @@ def _get_cox_net_ph_loss(
     X_strata: list[np.ndarray[tuple[int, int], np.dtype[np.floating]]],
     n_strata: int,
     events_strata: list[np.ndarray[tuple[int], np.dtype[np.bool_]]],
-    time_return_inverse_strata: list[np.ndarray[tuple[int], np.dtype[np.integer]]],
+    time_end_return_inverse_strata: list[np.ndarray[tuple[int], np.dtype[np.integer]]],
     n_unique_times_strata: list[int],
     alpha=0.0,
     l1_ratio=0.5,
+    time_start_return_inverse_strata: (
+        list[np.ndarray[tuple[int], np.dtype[np.integer]]] | None
+    ) = None,
 ):
+
+    uses_left_censorship = time_start_return_inverse_strata is not None
+
     partial_log_likelihood_per_strata = []
 
     abs_weights_sum = reduce(lambda a, b: a + b, [jnp.sum(jnp.abs(w)) for w in weights])
@@ -88,9 +94,11 @@ def _get_cox_net_ph_loss(
 
     for s_i in range(n_strata):
         X = X_strata[s_i]
-        time_return_inverse = time_return_inverse_strata[s_i]
+        time_end_return_inverse = time_end_return_inverse_strata[s_i]
         n_unique_times = n_unique_times_strata[s_i]
         events = events_strata[s_i]
+        if uses_left_censorship:
+            time_start_return_inverse = time_start_return_inverse_strata[s_i]
 
         matrixs_for_reduce_dot = [X] + weights[:-1]
 
@@ -107,9 +115,23 @@ def _get_cox_net_ph_loss(
         o = jnp.dot(second_to_last_layer, weights[-1])
         o_exp = jnp.exp(o)
 
-        risk_set = _reverse_cumsum_jax(
-            jnp.bincount(time_return_inverse, weights=o_exp, minlength=n_unique_times)
-        )[time_return_inverse]
+        if uses_left_censorship:
+            risk_removed_at_time = jnp.bincount(
+                time_end_return_inverse, weights=o_exp, minlength=n_unique_times
+            )
+            risk_added_at_time = jnp.bincount(
+                time_start_return_inverse, weights=o_exp, minlength=n_unique_times
+            )
+            risk_at_time = _reverse_cumsum_jax(
+                risk_added_at_time[:1] - risk_removed_at_time[1:]
+            )
+            risk_set = risk_at_time[time_end_return_inverse - 1]
+        else:
+            risk_set = _reverse_cumsum_jax(
+                jnp.bincount(
+                    time_end_return_inverse, weights=o_exp, minlength=n_unique_times
+                )
+            )[time_end_return_inverse]
 
         loss = -jnp.sum(events * (o - jnp.log(risk_set)))
 
@@ -125,7 +147,7 @@ def train_cox_net_ph(
     X_strata: list[np.ndarray[tuple[int, int], np.dtype[np.floating]]],
     n_strata: int,
     events_strata: list[np.ndarray[tuple[int], np.dtype[np.bool_]]],
-    time_return_inverse_strata: list[np.ndarray[tuple[int], np.dtype[np.integer]]],
+    time_end_return_inverse_strata: list[np.ndarray[tuple[int], np.dtype[np.integer]]],
     n_unique_times_strata: list[int],
     hidden_layers: list[int],
     weights: Optional[list[np.ndarray]] = None,
@@ -147,6 +169,9 @@ def train_cox_net_ph(
     epsilon: float = 0.0000001,
     rho: float = 0.95,
     decay: float = 0.9,
+    time_start_return_inverse_strata: (
+        list[np.ndarray[tuple[int], np.dtype[np.integer]]] | None
+    ) = None,
 ) -> tuple[list[np.ndarray], float, list[float]]:
     if weights is None:
         weights = get_init_weights(X_strata[0].shape[1], hidden_layers, init_dis)
@@ -167,10 +192,11 @@ def train_cox_net_ph(
             X_strata,
             n_strata,
             events_strata,
-            time_return_inverse_strata,
+            time_end_return_inverse_strata,
             n_unique_times_strata,
             alpha,
             l1_ratio,
+            time_start_return_inverse_strata,
         )
         updates, opt_state = grad_updater.update(jacobian, opt_state, weights)
         weights = optax.apply_updates(weights, updates)
@@ -181,10 +207,11 @@ def train_cox_net_ph(
                 X_strata,
                 n_strata,
                 events_strata,
-                time_return_inverse_strata,
+                time_end_return_inverse_strata,
                 n_unique_times_strata,
                 alpha,
                 l1_ratio,
+                time_start_return_inverse_strata,
             ).item()
 
             losses_per_steps.append(loss)
@@ -195,10 +222,11 @@ def train_cox_net_ph(
             X_strata,
             n_strata,
             events_strata,
-            time_return_inverse_strata,
+            time_end_return_inverse_strata,
             n_unique_times_strata,
             alpha,
             l1_ratio,
+            time_start_return_inverse_strata,
         ).item()
 
     weights_np = [np.array(w) for w in weights]

@@ -12,34 +12,51 @@ from sklearn.utils.validation import check_is_fitted
 
 from ._allen_additive import (
     _estimate_allen_additive_hazard_time_weights,
-    _generate_hazards_at_times_from_allen_additive_hazard_weights)
+    _generate_hazards_at_times_from_allen_additive_hazard_weights,
+)
 from ._base_hazard import _get_breslow_base_hazard
-from ._cox_net_ph import (get_relative_risk_from_cox_net_ph_weights,
-                          train_cox_net_ph)
+from ._cox_net_ph import get_relative_risk_from_cox_net_ph_weights, train_cox_net_ph
 from ._cox_ph_elastic_net import train_cox_elastic_net_regularization_paths
 from ._cox_ph_estimation import train_cox_ph_breslow, train_cox_ph_efron
 from ._cox_ph_estimation_left_censorship import (
     train_cox_ph_breslow_left_censorship,
     train_cox_ph_breslow_with_left_censorship_scipy_minimize,
-    train_cox_ph_efron_left_censorship)
-from ._data_validation import (_as_int, _as_int_np_array, _as_numeric_np_array,
-                               validate_survival_data,
-                               validate_times_start_array)
+    train_cox_ph_efron_left_censorship,
+)
+from ._data_validation import (
+    _as_int,
+    _as_int_np_array,
+    _as_numeric_np_array,
+    validate_survival_data,
+    validate_times_start_array,
+)
 from ._discrete_time_ph_estimation import (
-    _additive_chen_weibull_pdf, _chen_pdf, _gamma_pdf, _gompertz_pdf,
-    _log_logistic_pdf, _log_normal_pdf, _scale_times, _weibull_pdf,
+    _additive_chen_weibull_pdf,
+    _chen_pdf,
+    _gamma_pdf,
+    _gompertz_pdf,
+    _log_logistic_pdf,
+    _log_normal_pdf,
+    _scale_times,
+    _weibull_pdf,
     get_parametric_discrete_time_ph_model,
     predict_parametric_discrete_time_ph_model,
-    train_parametric_discrete_time_ph_model)
+    train_parametric_discrete_time_ph_model,
+)
 from ._neighbors import (
     build_kaplan_meier_survival_curve_from_neighbors_indexes,
-    build_kaplan_meier_survival_curve_from_neighbors_indexes_with_left_censoring)
+    build_kaplan_meier_survival_curve_from_neighbors_indexes_with_left_censoring,
+)
 from ._nonparametric import (
     get_kaplan_meier_survival_curve,
-    get_kaplan_meier_survival_curve_with_left_censorship)
-from ._stratification import (get_l_div_m_stata_per_strata, map_new_strata,
-                              preprocess_data_for_cox_ph,
-                              split_and_preprocess_data_by_strata)
+    get_kaplan_meier_survival_curve_with_left_censorship,
+)
+from ._stratification import (
+    get_l_div_m_stata_per_strata,
+    map_new_strata,
+    preprocess_data_for_cox_ph,
+    split_and_preprocess_data_by_strata,
+)
 
 __all__ = [
     "CoxProportionalHazard",
@@ -145,10 +162,10 @@ class CoxProportionalHazard(_SurvivalPredictBase):
             ) = preprocess_data_for_cox_ph(X, times, events, strata, times_start)
 
             l_div_m_stata = get_l_div_m_stata_per_strata(
-            events_strata,
-            times_strata,
-            time_return_inverse_strata,
-            n_unique_times_strata,
+                events_strata,
+                times_strata,
+                time_return_inverse_strata,
+                n_unique_times_strata,
             )
 
             if self.ties == "efron":
@@ -186,7 +203,7 @@ class CoxProportionalHazard(_SurvivalPredictBase):
             else:
                 raise ValueError("unknow ties")
 
-        else: #no left censorship
+        else:  # no left censorship
             (
                 n_strata,
                 seen_strata,
@@ -944,7 +961,18 @@ class CoxNNetPH(_SurvivalPredictBase):
         self.decay = decay
 
     @_fit_context(prefer_skip_nested_validation=True)
-    def fit(self, X, times, events, strata=None, check_input=True):
+    def fit(
+        self,
+        X: np.ndarray[tuple[int, int], np.dtype[np.float64]],
+        times: np.ndarray[tuple[int], np.dtype[np.int64]],
+        events: np.ndarray[tuple[int], np.dtype[np.bool_]],
+        strata: Optional[np.ndarray[tuple[int], np.dtype[np.int64]]] = None,
+        check_input: bool = True,
+        times_start: Optional[np.ndarray[tuple[int], np.dtype[np.int64]]] = None,
+    ):
+
+        uses_left_censorship = times_start is not None
+
         if check_input:
             X, times, events = validate_survival_data(X, times, events)
 
@@ -953,6 +981,9 @@ class CoxNNetPH(_SurvivalPredictBase):
                 self._uses_strata = True
             else:
                 self._uses_strata = False
+
+            if uses_left_censorship:
+                times_start = validate_times_start_array(times_start, times)
 
         for i in self.hidden_layers:
             if type(i) != int:
@@ -970,8 +1001,11 @@ class CoxNNetPH(_SurvivalPredictBase):
             n_unique_times_strata,
             _,
             _,
-            _,
-        ) = preprocess_data_for_cox_ph(X, times, events, strata)
+            time_start_return_inverse_strata,
+        ) = preprocess_data_for_cox_ph(X, times, events, strata, times_start)
+
+        if uses_left_censorship is False:
+            time_start_return_inverse_strata = None
 
         if hasattr(self, "coef_"):
             coef = self.coef_
@@ -998,6 +1032,7 @@ class CoxNNetPH(_SurvivalPredictBase):
             self.epsilon,
             self.rho,
             self.decay,
+            time_start_return_inverse_strata,
         )
 
         self.coef_ = coef

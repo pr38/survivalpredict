@@ -49,10 +49,8 @@ def _brier_scores_ipcw(
 
     unique_times = np.arange(1, max_time + 1)
 
-    kaplan_meier_survival_curve_inverted_event = (
-        get_kaplan_meier_survival_curve(
-            np.logical_not(events_for_ipcw), times_for_ipcw, max_time
-        )
+    kaplan_meier_survival_curve_inverted_event = get_kaplan_meier_survival_curve(
+        np.logical_not(events_for_ipcw), times_for_ipcw, max_time
     )
 
     survived_at_times = times[:, np.newaxis] > unique_times
@@ -224,7 +222,7 @@ def _brier_scores_administrative(
 
     if times_start is not None:
         not_left_censored = ~unique_times <= times_start[:, np.newaxis]
-        not_censored = np.logical_or(not_censored, not_left_censored)
+        not_censored = np.logical_and(not_censored, not_left_censored)
 
     left = (not_survived_at_times_with_event * np.square(predictions)) * not_censored
     right = (survived_at_times * np.square(1 - predictions)) * not_censored
