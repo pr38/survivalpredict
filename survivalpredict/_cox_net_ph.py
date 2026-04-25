@@ -122,9 +122,7 @@ def _get_cox_net_ph_loss(
             risk_added_at_time = jnp.bincount(
                 time_start_return_inverse, weights=o_exp, minlength=n_unique_times
             )
-            risk_at_time = _reverse_cumsum_jax(
-                risk_added_at_time[:1] - risk_removed_at_time[1:]
-            )
+            risk_at_time = jnp.cumsum(risk_added_at_time - risk_removed_at_time)
             risk_set = risk_at_time[time_end_return_inverse - 1]
         else:
             risk_set = _reverse_cumsum_jax(

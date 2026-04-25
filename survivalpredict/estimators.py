@@ -16,7 +16,10 @@ from ._allen_additive import (
 )
 from ._base_hazard import _get_breslow_base_hazard
 from ._cox_net_ph import get_relative_risk_from_cox_net_ph_weights, train_cox_net_ph
-from ._cox_ph_elastic_net import train_cox_elastic_net_regularization_paths
+from ._cox_ph_elastic_net import (
+    train_cox_elastic_net_regularization_paths,
+    train_cox_elastic_net_with_left_censorship,
+)
 from ._cox_ph_estimation import train_cox_ph_breslow, train_cox_ph_efron
 from ._cox_ph_estimation_left_censorship import (
     train_cox_ph_breslow_left_censorship,
@@ -1217,16 +1220,38 @@ class CoxElasticNetPH(_SurvivalPredictBase):
         self.tol = tol
 
     @_fit_context(prefer_skip_nested_validation=True)
-    def fit(self, X, times, events, weights=None, check_input=True):
+    def fit(
+        self,
+        X: np.ndarray[tuple[int, int], np.dtype[np.float64]],
+        times: np.ndarray[tuple[int], np.dtype[np.int64]],
+        events: np.ndarray[tuple[int], np.dtype[np.bool_]],
+        check_input: bool = True,
+        times_start: Optional[np.ndarray[tuple[int], np.dtype[np.int64]]] = None,
+    ):
+        use_left_censorship = times_start is not None
 
         if check_input:
             X, times, events = validate_survival_data(X, times, events)
+            if use_left_censorship:
+                times_start = validate_times_start_array(times_start, times)
 
         self._max_time_observed = np.max(times)
 
-        coefs, loss = train_cox_elastic_net_regularization_paths(
-            X, times, events, self.alpha, self.l1_ratio, self.tol, self.max_iter
-        )
+        if use_left_censorship:
+            coefs, loss = train_cox_elastic_net_with_left_censorship(
+                X,
+                times,
+                times_start,
+                events,
+                self.alpha,
+                self.l1_ratio,
+                self.tol,
+                self.max_iter,
+            )
+        else:
+            coefs, loss = train_cox_elastic_net_regularization_paths(
+                X, times, events, self.alpha, self.l1_ratio, self.tol, self.max_iter
+            )
 
         self.coef_ = coefs
         self.n_log_likelihood = loss

@@ -49,7 +49,7 @@ The estimators implemented in the `survivalpredict.estimators` sub-module.
         <td>Cox Proportional Hazards model model with Elastic-Net/Lasso penalty and feature shrinkage/selection. Uses the 'Newton Raphson-like' coordinate descent algorithm described in <a href=https://pmc.ncbi.nlm.nih.gov/articles/PMC4824408>Simon, Noah et al. “Regularization Paths for Cox's Proportional Hazards Model via Coordinate Descent</a>. Assumes breslow ties. The current literature is unclear on how to incorporate stratification support into said algorithm.
         </td>
         <td> No</td>
-        <td>No/todo</td>
+        <td>Yes</td>
     </tr>
     <tr>
         <td>KaplanMeierSurvivalEstimator</td>
