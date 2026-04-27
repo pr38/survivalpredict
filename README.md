@@ -1,6 +1,6 @@
 # SurvivalPredict
 
-A python packaged centered around Survival Analysis Statistical Learning, for predicting survival curves. The code in this repo is lovingly written without any schocrastic generative processes.
+A python package centered around Survival Analysis Statistical Learning, for predicting survival curves. The code in this repo is lovingly written without any stochastic generative processes.
 
 See <a href=https://survivalpredict.readthedocs.io/en/latest/index.html>documentation</a>
 
@@ -14,8 +14,8 @@ WIP. A pypi release should be released soon. In the meantime, the code in this r
 
 
 survivalpredict makes some assumptions. 
-* The `times` array, the last known observed time of an individual before the event or censorship, is to be encoded as an integer. It is assumed that `time` starts with 1, and each interval of time is equally important. It is advised engineering time to max out at a few thousand; large values in the `time` array can trigger expensive compute on several estimators.
-*  The `events` array should be of boolean type, `True` if the individual expenses event(i.e., charged, death, conversion, etc.), and `False` otherwise.
+* The `times` array, the last known observed time of an individual before the event or censorship, is to be encoded as an integer. It is assumed that `time` starts with 1, and each interval of time is equally important. It is advised to engineer time to max out at a few thousand; large values in the `time` array can trigger expensive compute on several estimators.
+*  The `events` array should be of boolean type, `True` if the individual experiences an event (e.g., charged, death, conversion, etc.), and `False` otherwise.
 *  If the data is left-censored, in cases of time-varying effects or recurrent events, the smallest value of the `times_start` array should be 0, and the `times_start` array should be smaller than the `times` array.
 *  When calling `predict` on an estimator, columns of the output will correspond to all times till max time, starting at time 1.
 
@@ -33,7 +33,7 @@ The estimators implemented in the `survivalpredict.estimators` sub-module.
     <tr>
         <td>CoxProportionalHazard</td>
         <td>
-        Cox Proportional Hazards model is a linear semi-parametric relative risk model. A staple of survival analysis. Fast and efficient to train. Survivalpredict's implementation has many optimizations and is up to 10x to 20x faster than other implementations available to Python. Both breslow and efron ties are supported. Currently only the breslow base hazard is avalable.
+        Cox Proportional Hazards model is a linear semi-parametric relative risk model. A staple of survival analysis. Fast and efficient to train. Survivalpredict's implementation has many optimizations and is up to 10x to 20x faster than other implementations available to Python. Both breslow and efron ties are supported. Currently, only the Breslow base hazard is available.
         </td>
         <td> Yes</td>
         <td>Yes</td>
@@ -90,22 +90,22 @@ Survivalpredict focuses on metrics that directly measure prediction performance.
     </tr>
     <tr>
         <td>brier_scores_administrative</td>
-        <td>Squared error between the true survival and prediction for each time of interest. Censored intervals are ignored. Averaged by the number of rows not censored at a given interval of time. Ideal in cases of 'administrative' censorship, where 'survival time' is modeled after the time of an individual in the experiment, and not calendar time. This mertic is ideal for cases of churn, conversion and operational failure. See <a href=https://jmlr.org/papers/volume24/19-1030/19-1030.pdf>here</a>.</td>
+        <td>Squared error between the true survival and prediction for each time of interest. Censored intervals are ignored. Averaged by the number of rows not censored at a given interval of time. Ideal in cases of 'administrative' censorship, where 'survival time' is modeled after the time of an individual in the experiment, and not calendar time. This metric is ideal for cases of churn, conversion and operational failure. See <a href=https://jmlr.org/papers/volume24/19-1030/19-1030.pdf>here</a>.</td>
     </tr>
     <tr>
         <td>integrated_brier_score_administrative</td>
         <td>Integral of administrative brier scores, to allow for a singular metric of performance. </td>
     </tr>
         <td>integrated_brier_score_administrative_sklearn_metric</td>
-        <td>scikit-learn metric wraper around `integrated_brier_score_administrative` function, for acessing said metric in when using the SklearnSurvivalPipeline wrapper class when interfacing with scikit-learn.</td>
+        <td>scikit-learn metric wrapper around `integrated_brier_score_administrative` function, for accessing said metric in when using the SklearnSurvivalPipeline wrapper class when interfacing with scikit-learn.</td>
     </tr>
     <tr>
         <td>integrated_brier_score_administrative_sklearn_scorer</td>
-        <td>scikit-learn scorer wraper around `integrated_brier_score_administrative` function, for acessing said metric in when using the SklearnSurvivalPipeline wrapper class when interfacing with scikit-learn.</td>
+        <td>scikit-learn scorer wrapper around `integrated_brier_score_administrative` function, for accessing said metric in when using the SklearnSurvivalPipeline wrapper class when interfacing with scikit-learn.</td>
     </tr>
     <tr>
         <td>brier_scores_ipcw</td>
-        <td>Brier scores with inverse probability of censoring weights. The squared error between the true survival and prediction is weighted using a Kaplan-Meier curve with inverted events, depending on censoring and failure at different points in time. This is a common metric within the field of biostatistics and is used in clinical trials.See <a href=https://pubmed.ncbi.nlm.nih.gov/10474158>here</a>.</td>
+        <td>Brier scores with inverse probability of censoring weights. The squared error between the true survival and prediction is weighted using a Kaplan-Meier curve with inverted events, depending on censoring and failure at different points in time. This is a common metric within the field of biostatistics and is used in clinical trials. See <a href=https://pubmed.ncbi.nlm.nih.gov/10474158>here</a>.</td>
     </tr>
     <tr>
         <td>integrated_brier_score_ipcw</td>
@@ -113,10 +113,10 @@ Survivalpredict focuses on metrics that directly measure prediction performance.
     </tr>
     <tr>
         <td>integrated_brier_score_ipcw_sklearn_metric</td>
-        <td>scikit-learn metric wraper around `integrated_brier_score_ipcw` function.</td>
+        <td>scikit-learn metric wrapper around `integrated_brier_score_ipcw` function.</td>
     </tr>
         <td>integrated_brier_score_ipcw_sklearn_scorer</td>
-        <td>scikit-learn scorer wraper around `integrated_brier_score_ipcw` function.</td>
+        <td>scikit-learn scorer wrapper around `integrated_brier_score_ipcw` function.</td>
     </tr>
 </table>
 
@@ -149,7 +149,7 @@ The `survivalpredict.strata_preprocessing` module allows for the creation of str
 
 ## Pipeline
 
-Due to various reasons, survivalpredict intentionaly breaks with scikit-learn's api in several ways. The `survivalpredict.pipeline` module allows for creating wrappers around various survivalpredict classes, in order for survivalpredict intperpolate with the greater scikit-learn ecosysteam(ie, for feature selection or hyperparameter tuning); in addition of the various utility of a conventional scikit-learn's pipeline. 
+Due to various reasons, survivalpredict intentionally breaks with scikit-learn's api in several ways. The `survivalpredict.pipeline` module allows for creating wrappers around various survivalpredict classes, in order for survivalpredict to interpolate with the greater scikit-learn ecosystem (i.e., for feature selection or hyperparameter tuning); in addition of the various utility of a conventional scikit-learn's pipeline. 
 
 <table>
     <tr>

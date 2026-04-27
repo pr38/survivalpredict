@@ -976,14 +976,14 @@ class CoxNNetPH(_SurvivalPredictBase):
 
         uses_left_censorship = times_start is not None
 
+        self._uses_strata = strata is not None
+
+
         if check_input:
             X, times, events = validate_survival_data(X, times, events)
 
-            if strata is not None:
+            if self._uses_strata:
                 strata = _as_int_np_array(strata, "strata")
-                self._uses_strata = True
-            else:
-                self._uses_strata = False
 
             if uses_left_censorship:
                 times_start = validate_times_start_array(times_start, times)

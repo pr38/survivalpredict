@@ -62,7 +62,7 @@ def build_sklearn_pipeline_target(
         y["strata"] = strata
 
     if times_start is not None:
-        y["times_start"] = strata
+        y["times_start"] = times_start
 
     return y
 

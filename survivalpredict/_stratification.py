@@ -122,6 +122,8 @@ def split_and_preprocess_data_by_strata(
 
 def preprocess_data_for_cox_ph(X, times, events, strata=None, times_start=None):
     if strata is not None:
+        has_times_start = times_start is not None
+        times_start = np.zeros_like(times)
         (
             n_strata,
             seen_strata,
@@ -139,7 +141,7 @@ def preprocess_data_for_cox_ph(X, times, events, strata=None, times_start=None):
             events,
             strata,
             times_start,
-            times_start is not None,
+            has_times_start,
         )
 
     else:
