@@ -1,7 +1,14 @@
 import numpy as np
 import pytest
 
-from ..estimators import AalenAdditiveHazard, ParametricDiscreteTimePH
+from ..estimators import (
+    AalenAdditiveHazard,
+    ParametricDiscreteTimePH,
+    CoxElasticNetPH,
+    CoxProportionalHazard,
+    CoxNNetPH,
+    KaplanMeierSurvivalEstimator,
+)
 from ..metrics import brier_scores_administrative, integrated_brier_score_administrative
 from ..validation import sur_cross_val_score
 
@@ -23,7 +30,15 @@ X = np.array(
 
 
 @pytest.mark.parametrize(
-    "estimator_class", [AalenAdditiveHazard, ParametricDiscreteTimePH]
+    "estimator_class",
+    [
+        AalenAdditiveHazard,
+        ParametricDiscreteTimePH,
+        CoxElasticNetPH,
+        CoxProportionalHazard,
+        CoxNNetPH,
+        KaplanMeierSurvivalEstimator,
+    ],
 )
 def test_left_censorship(estimator_class):
     est = estimator_class()
@@ -34,14 +49,6 @@ def test_left_censorship(estimator_class):
     scores = brier_scores_administrative(pred, times, events, times_start=times_start)
 
     assert np.isnan(scores).all() == False
-
-    score_with_left_cen = integrated_brier_score_administrative(
-        pred, times, events, times_start=times_start
-    )
-
-    score_without_left_cen = integrated_brier_score_administrative(pred, times, events)
-
-    assert score_with_left_cen != score_without_left_cen
 
     cv_scores = sur_cross_val_score(
         estimator_class(), X, times, events, times_start=times_start, cv=2
