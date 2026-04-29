@@ -12,7 +12,5 @@ pipeline
 
 .. autoclass:: survivalpredict.pipeline.SklearnSurvivalPipeline
    :members:
-   :inherited-members:
-   :special-members: __call__
 
 .. autofunction:: survivalpredict.pipeline.make_sklearn_survival_pipeline

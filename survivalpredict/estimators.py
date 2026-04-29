@@ -74,6 +74,7 @@ __all__ = [
 
 class _SurvivalPredictBase(BaseEstimator):
     def fit_predict(self, *args, **kwargs):
+        """Fit model and Build survival curves."""
         predict_kwargs = kwargs.copy()
 
         if "max_time" in kwargs:
@@ -88,6 +89,61 @@ class _SurvivalPredictBase(BaseEstimator):
 
 
 class CoxProportionalHazard(_SurvivalPredictBase):
+    """
+    Cox Proportional Hazards.
+
+    The ‘Cox Proportional Hazards’ model is a linear semi-parametric relative risk model.
+    A staple of survival analysis. Cox more or less trains on ranking relative risk to estimate its coefficients.
+    After training, the 'Breslow estimator' is run on relative risk and events over time to build the base hazard.
+    A product of the relative risk and base hazard at each point in time is used to build the survival curves.
+
+    The reason Cox is called ‘semi-parametric’ is that it does not try to directly estimate the hazard but only the relative hazard.
+    This is why a ‘partial-likelihood’ is what Cox estimates on.
+
+    Parameters
+    ----------
+    alpha : float , default=0.0
+        Constant that multiplies the penalty terms. Used to penalize coefficients
+        durring training.
+
+    l1_ratio : float, default=0.5
+        The ElasticNet mixing parameter, with ``0 <= l1_ratio <= 1``. For
+        ``l1_ratio = 0`` the penalty is an L2 penalty. ``For l1_ratio = 1`` it
+        is an L1 penalty.  For ``0 < l1_ratio < 1``, the penalty is a
+        combination of L1 and L2.
+
+    max_iter : int, default=100
+        The maximum number of iterations.
+
+    ties : {"breslow", "efron"}, default='breslow'
+        The method to handle ‘tied’ event times. Cox’s coefficients are intended
+        to represent the relative risk of observations in proportion to each other,
+        independent of time. The presence of ‘tied’ or concurrent failures muddies
+        the interpretability of Cox’s coefficients.‘Breslow ties’ ignore said issue
+        and perform best on predictions. ‘Efron ties’ shaves some of the influence
+        of some tied data on the likelihood in hopes of solving said problem, at the price
+        of prediction performance. Use Breslow if prediction performance is your primary
+        concern, and use Efron in cases of inference.
+
+    tol : float, default=1e-9
+        The tolerance for the optimization: if the updates are smaller or equal to
+        ``tol``, the optimization code checks the dual gap for optimality and continues
+        until it is smaller or equal to ``tol``.
+
+    Attributes
+    ----------
+    coef_ : ndarray of ndarray of shape (n_features,)
+        Coefficients of the model.
+
+    n_log_likelihood : float
+        Negative log likelihood of the model at the point of convergence.
+
+    _breslow_base_hazard : ndarray of ndarray of shape (max_time_seen,) or shape (n_strata,max_time_seen)
+        Base hazard generated from training data, used for predicting survival curves.
+
+    _breslow_base_survival : ndarray of ndarray of shape (max_time_seen,) or shape (n_strata,max_time_seen)
+        Base survival generated from training data, used for predicting survival curves.
+    """
 
     _parameter_constraints: dict = {
         "alpha": [Interval(Real, 0, None, closed="left")],
@@ -122,6 +178,34 @@ class CoxProportionalHazard(_SurvivalPredictBase):
         check_input: bool = True,
         times_start: Optional[np.ndarray[tuple[int], np.dtype[np.int64]]] = None,
     ):
+        """
+        Fit model.
+
+        Parameters
+        ----------
+        X : array-like of shape (n_samples, n_features)
+            Training data.
+
+        times : array-like of shape (n_samples), dtype=np.int64
+            Point in time last observed.
+
+        events : array-like of shape (n_samples), dtype=np.bool_
+            Experianed event.
+
+        strata : array-like of shape (n_samples,), dtype=np.int64, default=None
+            If passed in, associated strata for per observation.
+
+        check_input : bool, default=True
+            If True, validates and casts inputs.
+
+        times_start : array-like of shape (n_samples, dtype=np.int64), default=None
+            Starting point for observation. If not passed in, all times_start times are assumed to be 0.
+
+        Returns
+        -------
+        object
+            Fitted Estimator.
+        """
 
         use_left_censorship = times_start is not None
 
@@ -293,7 +377,33 @@ class CoxProportionalHazard(_SurvivalPredictBase):
         self.is_fitted_ = True
         return self
 
-    def predict(self, X, strata=None, max_time: Optional[int] = None):
+    def predict(
+        self,
+        X: np.ndarray[tuple[int, int], np.dtype[np.float64]],
+        strata=None,
+        max_time: Optional[int] = None,
+    ) -> np.ndarray[tuple[int, int], np.dtype[np.float64]]:
+        """
+        Build survival curves on an array of vectors X.
+
+        Parameters
+        ----------
+        X : array-like of shape (n_samples, n_features)
+            Predicting data.
+
+        strata : array-like of shape (n_samples,), dtype=np.int64, default=None
+            If passed in, associated strata for per observation.
+
+        max_time : int, default=None
+            Maximum time of built survival curves. If none, maximum time is max time seen on training data.
+
+        Returns
+        -------
+        ndarray of shape (n_samples, max_time), dtype=np.float64
+            The estimated survival curves, the left-most column is the probability of survival at time 1,
+            and the right-most column ends at max_time.
+        """
+
         check_is_fitted(self)
 
         if strata is not None:
@@ -336,13 +446,89 @@ class CoxProportionalHazard(_SurvivalPredictBase):
 
             return np.hstack([survival, impulted_values])
 
-    def predict_risk(self, X):
+    def predict_risk(
+        self, X: np.ndarray[tuple[int, int], np.dtype[np.float64]]
+    ) -> np.ndarray[tuple[int], np.dtype[np.float64]]:
+        """
+        Build relative risk on an array of vectors X.
+
+        Parameters
+        ----------
+        X : array-like of shape (n_samples, n_features)
+            Predicting data.
+
+        Returns
+        -------
+        ndarray of shape (n_samples), dtype=np.float64
+            The Relative risk of X, used under the hood for building survival curves.
+            Relative risk is what 'Concordance Index' examines.
+        """
+
         check_is_fitted(self)
 
         return np.exp(np.dot(X, self.coef_))
 
 
 class ParametricDiscreteTimePH(_SurvivalPredictBase):
+    """
+    Parametric Discrete Time Proportional Hazards.
+
+    A fully parametric linear proportional hazards model.
+    Unlike Cox, both the coefficients and the base hazard are directly estimated from observed survival over time.
+    Various distributions are available as base hazards; namely, Chen, Weibull, Log-Normal,
+    Log-logistic, Gompertz, Gamma and Additive-Chen-Weibull[1] are available as hyperparameters.
+    Maximum likelihood is estimated using a survival distinct time likelihood[2] with censorship.
+    Implemented with Pymc/Pytensor, with either a Jax or numba backend.
+
+    Parameters
+    ----------
+    distribution : {"chen", "weibull","log_normal","log_logistic","gamma","gompertz","additive_chen_weibull"}, default='chen'
+        ...
+
+    alpha : float , default=0.0
+        Constant that multiplies the penalty terms. Used to penalize coefficients
+        durring training.
+
+    l1_ratio : float, default=0.5
+        The ElasticNet mixing parameter, with ``0 <= l1_ratio <= 1``. For
+        ``l1_ratio = 0`` the penalty is an L2 penalty. ``For l1_ratio = 1`` it
+        is an L1 penalty.  For ``0 < l1_ratio < 1``, the penalty is a
+        combination of L1 and L2.
+
+    pytensor_mode : {"JAX", "NUMBA","FAST_COMPILE"}, default='JAX'
+        Pytensor backend. ‘JAX’ has the fastest compile time, but is not multiprocessing safe.
+        NUMBA is multiprocessing safe, but has a long compile time. Pytensor's ‘FAST_COMPILE’
+        mode is multiprocessing safe and has a fast compile time, but runs slower than the other modes.
+        ‘JAX’ is a good default, but ‘NUMBA’ is recommended when using multiprocessing.
+
+    strata_uses_pytensor_scan : bool, default=True
+        If strata are present and ‘strata_uses_pytensor_scan’ is True, Pytensor's 'scan' functionality
+        is used to map strata to observations during training. Using Pytensor scan might increase the
+        Pytensor compile time, but will lead to a faster runtime. For considerable data and a high
+        quantity of starta, it is recommended to set strata_uses_pytensor_scan to True.
+
+    coef_prior_normal_sigma : float,
+        This class runs a Pymc model under the hood. The coefficients are modeled as normal distributions.
+        This parameter is the sigma of the prior. The larger the sigma, the wider the possible set of values
+        at coverage. It is recommended to scale the data to avoid tuning this parameter.
+
+    base_harard_prior_exponential_lam : float, default = 1.5
+        This class runs a Pymc model under the hood. The base hazard distrabution's parameters are modeled as exponential distributions.
+        This parameter is the 'lam' of the prior of the base hazard distrabution' parameters.
+        It is recommended to scale the data to avoid tuning this parameter.
+
+    scipy_minimize_method : {"nelder-mead","powell","CG","BFGS","Newton-CG","L-BFGS-B","TNC","COBYLA","SLSQP","trust-constr","dogleg","trust-ncg","trust-exact","trust-krylov","basinhopping",}, default='L-BFGS-B'
+        This class runs a Pymc model under the hood. Durring training we simply find the 'Maximum likelihood estimation'(MLE)/
+        'Maximum a posteriori estimation'(MAP). This is the exposed method that PYMC find the MLE/MAP.
+
+    References
+    ----------
+
+    [1] Thanh Thach T, Briš R. An additive Chen-Weibull distribution and its applications in reliability modeling. Qual Reliab Engng Int. 2021;37:352–373. https://doi.org/10.1002/qre.2740
+
+    [2] Suresh K, Severn C, Ghosh D. Survival prediction models: an introduction to discrete-time modeling. BMC Med Res Methodol. 2022 Jul 26;22(1):207. doi: 10.1186/s12874-022-01679-6. PMID: 35883032; PMCID: PMC9316420.
+    """
+
     _parameter_constraints: dict = {
         "distribution": [
             StrOptions(
@@ -461,6 +647,34 @@ class ParametricDiscreteTimePH(_SurvivalPredictBase):
         check_input: bool = True,
         times_start: Optional[np.ndarray[tuple[int], np.dtype[np.int64]]] = None,
     ):
+        """
+        Fit model.
+
+        Parameters
+        ----------
+        X : array-like of shape (n_samples, n_features)
+            Training data.
+
+        times : array-like of shape (n_samples), dtype=np.int64
+            Point in time last observed.
+
+        events : array-like of shape (n_samples), dtype=np.bool_
+            Experianed event.
+
+        strata : array-like of shape (n_samples,), dtype=np.int64, default=None
+            If passed in, associated strata for per observation.
+
+        check_input : bool, default=True
+            If True, validates and casts inputs.
+
+        times_start : array-like of shape (n_samples, dtype=np.int64), default=None
+            Starting point for observation. If not passed in, all times_start times are assumed to be 0.
+
+        Returns
+        -------
+        object
+            Fitted Estimator.
+        """
 
         if check_input:
             X, times, events = validate_survival_data(X, times, events)
@@ -531,7 +745,28 @@ class ParametricDiscreteTimePH(_SurvivalPredictBase):
         X: np.ndarray[tuple[int, int], np.dtype[np.float64]],
         strata=None,
         max_time: Optional[int] = None,
-    ):
+    ) -> np.ndarray[tuple[int, int], np.dtype[np.float64]]:
+        """
+        Build survival curves on an array of vectors X.
+
+        Parameters
+        ----------
+        X : array-like of shape (n_samples, n_features)
+            Predicting data.
+
+        strata : array-like of shape (n_samples,), dtype=np.int64, default=None
+            If passed in, associated strata for per observation.
+
+        max_time : int, default=None
+            Maximum time of built survival curves. If none, maximum time is max time seen on training data.
+
+        Returns
+        -------
+        ndarray of shape (n_samples, max_time), dtype=np.float64
+            The estimated survival curves, the left-most column is the probability of survival at time 1,
+            and the right-most column ends at max_time.
+        """
+
         check_is_fitted(self)
 
         if strata is not None:
@@ -564,12 +799,49 @@ class ParametricDiscreteTimePH(_SurvivalPredictBase):
             strata,
         )
 
-    def predict_risk(self, X: np.ndarray[tuple[int, int], np.dtype[np.float64]]):
+    def predict_risk(
+        self, X: np.ndarray[tuple[int, int], np.dtype[np.float64]]
+    ) -> np.ndarray[tuple[int], np.dtype[np.float64]]:
+        """
+        Build relative risk on an array of vectors X.
+
+        Parameters
+        ----------
+        X : array-like of shape (n_samples, n_features)
+            Predicting data.
+
+        Returns
+        -------
+        ndarray of shape (n_samples), dtype=np.float64
+            The Relative risk of X, used under the hood for building survival curves.
+            Relative risk is what 'Concordance Index' examines.
+        """
+
         check_is_fitted(self)
 
         return np.exp(np.dot(X, self.coef_))
 
-    def get_base_hazard(self, max_time: Optional[int] = None):
+    def get_base_hazard(
+        self, max_time: Optional[int] = None
+    ) -> (
+        np.ndarray[tuple[int, int], np.dtype[np.float64]]
+        | np.ndarray[tuple[int], np.dtype[np.float64]]
+    ):
+        """
+        Retrieve base hazards estimated by model.
+
+        Parameters
+        ----------
+        max_time : int, default=None
+            Maximum time of built survival curves. If none, maximum time is max time seen on training data.
+
+        Returns
+        -------
+        ndarray of shape (max_time,) or (n_strata,max_time,)  , dtype=np.float64
+            The estimated base hazard; used in building survival curves.
+        """
+
+        check_is_fitted(self)
 
         if max_time is None:
             max_time = self._max_time_observed
@@ -603,7 +875,41 @@ class ParametricDiscreteTimePH(_SurvivalPredictBase):
         strata: Optional[np.ndarray[tuple[int], np.dtype[np.int64]]] = None,
         strata_names: list[str] | np.ndarray[tuple[int], np.dtype[Any]] | None = None,
         times_start: Optional[np.ndarray[tuple[int], np.dtype[np.int64]]] = None,
-    ):
+    ) -> "pymc.Model":
+        """
+        Return the underlying Pymc model.
+
+        Parameters
+        ----------
+        X : array-like of shape (n_samples, n_features)
+            Training data.
+
+        times : array-like of shape (n_samples), dtype=np.int64
+            Point in time last observed.
+
+        events : array-like of shape (n_samples), dtype=np.bool_
+            Experianed event.
+
+        max_time : int, default=None
+            Maximum time of built survival curves. If none, maximum time is max time seen on training data.
+
+        labes_names : list of str, default=None
+            Names for feature, allows for parameters associated with each feature to be named accordingly.
+
+        strata : array-like of shape (n_samples,), dtype=np.int64, default=None
+            If passed in, associated strata for per observation.
+
+        strata_names : list of str, default=None
+            Names for strata, allows for parameters associated with each strata to be named accordingly.
+
+        times_start : array-like of shape (n_samples, dtype=np.int64), default=None
+            Starting point for observation. If not passed in, all times_start times are assumed to be 0.
+
+        Returns
+        -------
+        pymc.Model
+        """
+
         base_hazard_pdf_callable, n_base_hazard_prams = (
             self._get_distribution_function_and_n_prams()
         )
@@ -651,16 +957,50 @@ class ParametricDiscreteTimePH(_SurvivalPredictBase):
 
 
 class KaplanMeierSurvivalEstimator(_SurvivalPredictBase):
+    """
+    The Kaplan-Meier estimate of the survival estimation.
+
+    Kaplan-Meier is a univariate non-parametric survival curve estimation.
+    It can be useful as a baseline/dummy estimator.
+    """
 
     def fit(
         self,
-        X,
+        X: np.ndarray[tuple[int, int], np.dtype[np.float64]],
         times: np.ndarray[tuple[int], np.dtype[np.int64]],
         events: np.ndarray[tuple[int], np.dtype[np.bool_]],
         strata: Optional[np.ndarray[tuple[int], np.dtype[np.int64]]] = None,
         check_input: bool = True,
         times_start: Optional[np.ndarray[tuple[int], np.dtype[np.int64]]] = None,
     ):
+        """
+        Fit model.
+
+        Parameters
+        ----------
+        X : array-like of shape (n_samples, n_features)
+            Training data.
+
+        times : array-like of shape (n_samples), dtype=np.int64
+            Point in time last observed.
+
+        events : array-like of shape (n_samples), dtype=np.bool_
+            Experianed event.
+
+        strata : array-like of shape (n_samples,), dtype=np.int64, default=None
+            If passed in, associated strata for per observation.
+
+        check_input : bool, default=True
+            If True, validates and casts inputs.
+
+        times_start : array-like of shape (n_samples, dtype=np.int64), default=None
+            Starting point for observation. If not passed in, all times_start times are assumed to be 0.
+
+        Returns
+        -------
+        object
+            Fitted Estimator.
+        """
 
         if times_start is None:
             uses_left_censorship = False
@@ -744,7 +1084,33 @@ class KaplanMeierSurvivalEstimator(_SurvivalPredictBase):
         self.is_fitted_ = True
         return self
 
-    def predict(self, X, strata=None, max_time: Optional[int] = None):
+    def predict(
+        self,
+        X: np.ndarray[tuple[int, int], np.dtype[np.float64]],
+        strata: Optional[np.ndarray[tuple[int], np.dtype[np.int64]]] = None,
+        max_time: Optional[int] = None,
+    ) -> np.ndarray[tuple[int, int], np.dtype[np.float64]]:
+        """
+        Build survival curves on an array of vectors X.
+
+        Parameters
+        ----------
+        X : array-like of shape (n_samples, n_features)
+            Predicting data.
+
+        strata : array-like of shape (n_samples,), dtype=np.int64, default=None
+            If passed in, associated strata for per observation.
+
+        max_time : int, default=None
+            Maximum time of built survival curves. If none, maximum time is max time seen on training data.
+
+        Returns
+        -------
+        ndarray of shape (n_samples, max_time), dtype=np.float64
+            The estimated survival curves, the left-most column is the probability of survival at time 1,
+            and the right-most column ends at max_time.
+        """
+
         check_is_fitted(self)
 
         if strata is not None:
@@ -802,6 +1168,66 @@ class KaplanMeierSurvivalEstimator(_SurvivalPredictBase):
 
 
 class KNeighborsSurvival(_SurvivalPredictBase):
+    """
+    Survival curves implementing the k-nearest neighbors vote.
+
+    Parameters docs are taken from scikit-learn.
+
+    Parameters
+    ----------
+    n_neighbors : int, default=5
+        Number of neighbors to use by default for :meth:`kneighbors` queries.
+
+    algorithm : {'auto', 'ball_tree', 'kd_tree', 'brute'}, default='auto'
+        Algorithm used to compute the nearest neighbors:
+
+        - 'ball_tree' will use :class:`BallTree`
+        - 'kd_tree' will use :class:`KDTree`
+        - 'brute' will use a brute-force search.
+        - 'auto' will attempt to decide the most appropriate algorithm
+          based on the values passed to :meth:`fit` method.
+
+    leaf_size : int, default=30
+        Leaf size passed to BallTree or KDTree.  This can affect the
+        speed of the construction and query, as well as the memory
+        required to store the tree.  The optimal value depends on the
+        nature of the problem.
+
+    p : float, default=2
+        Power parameter for the Minkowski metric. When p = 1, this is equivalent
+        to using manhattan_distance (l1), and euclidean_distance (l2) for p = 2.
+        For arbitrary p, minkowski_distance (l_p) is used. This parameter is expected
+        to be positive.
+
+    metric : str or callable, default='minkowski'
+        Metric to use for distance computation. Default is "minkowski", which
+        results in the standard Euclidean distance when p = 2. See the
+        documentation of `scipy.spatial.distance
+        <https://docs.scipy.org/doc/scipy/reference/spatial.distance.html>`_ and
+        the metrics listed in
+        :class:`~sklearn.metrics.pairwise.distance_metrics` for valid metric
+        values.
+
+        If metric is "precomputed", X is assumed to be a distance matrix and
+        must be square during fit. X may be a :term:`sparse graph`, in which
+        case only "nonzero" elements may be considered neighbors.
+
+        If metric is a callable function, it takes two arrays representing 1D
+        vectors as inputs and must return one value indicating the distance
+        between those vectors. This works for Scipy's metrics, but is less
+        efficient than passing the metric name as a string.
+
+    metric_param : dict, default=None
+        Additional keyword arguments for the metric function.
+
+    n_jobs : int, default=None
+        The number of parallel jobs to run for neighbors search.
+        ``None`` means 1 unless in a :obj:`joblib.parallel_backend` context.
+        ``-1`` means using all processors. See :term:`Glossary <n_jobs>`
+        for more details.
+        Doesn't affect :meth:`fit` method.
+    """
+
     _parameter_constraints: dict = {
         "n_neighbors": [Interval(Integral, 1, None, closed="left"), None],
         "algorithm": [StrOptions({"auto", "ball_tree", "kd_tree", "brute"})],
@@ -811,7 +1237,7 @@ class KNeighborsSurvival(_SurvivalPredictBase):
             StrOptions(set(itertools.chain(*VALID_METRICS_KNN.values()))),
             callable,
         ],
-        "metric_params": [dict, None],
+        "metric_param": [dict, None],
         "n_jobs": [Integral, None],
     }
 
@@ -836,12 +1262,37 @@ class KNeighborsSurvival(_SurvivalPredictBase):
 
     def fit(
         self,
-        X,
-        times,
-        events,
-        check_input=True,
+        X: np.ndarray[tuple[int, int], np.dtype[np.float64]],
+        times: np.ndarray[tuple[int], np.dtype[np.int64]],
+        events: np.ndarray[tuple[int], np.dtype[np.bool_]],
+        check_input: bool = True,
         times_start: Optional[np.ndarray[tuple[int], np.dtype[np.int64]]] = None,
     ):
+        """
+        Fit model.
+
+        Parameters
+        ----------
+        X : array-like of shape (n_samples, n_features)
+            Training data.
+
+        times : array-like of shape (n_samples), dtype=np.int64
+            Point in time last observed.
+
+        events : array-like of shape (n_samples), dtype=np.bool_
+            Experianed event.
+
+        check_input : bool, default=True
+            If True, validates and casts inputs.
+
+        times_start : array-like of shape (n_samples, dtype=np.int64), default=None
+            Starting point for observation. If not passed in, all times_start times are assumed to be 0.
+
+        Returns
+        -------
+        object
+            Fitted Estimator.
+        """
 
         if times_start is not None:
             self._uses_times_start = True
@@ -879,7 +1330,29 @@ class KNeighborsSurvival(_SurvivalPredictBase):
 
         return self
 
-    def predict(self, X, max_time: Optional[int] = None):
+    def predict(
+        self,
+        X: np.ndarray[tuple[int, int], np.dtype[np.float64]],
+        max_time: Optional[int] = None,
+    ) -> np.ndarray[tuple[int, int], np.dtype[np.float64]]:
+        """
+        Build survival curves on an array of vectors X.
+
+        Parameters
+        ----------
+        X : array-like of shape (n_samples, n_features)
+            Predicting data.
+
+        max_time : int, default=None
+            Maximum time of built survival curves. If none, maximum time is max time seen on training data.
+
+        Returns
+        -------
+        ndarray of shape (n_samples, max_time), dtype=np.float64
+            The estimated survival curves, the left-most column is the probability of survival at time 1,
+            and the right-most column ends at max_time.
+        """
+
         check_is_fitted(self)
 
         if max_time is None:
@@ -909,6 +1382,78 @@ class KNeighborsSurvival(_SurvivalPredictBase):
 
 
 class CoxNNetPH(_SurvivalPredictBase):
+    """
+    Artificial neural network proportional hazards Model.
+
+    A neural network model for estimating relative risk.
+    Cox proportional hazards model's 'negative log likelihood for Breslow ties' is used as a loss function.
+    Breslow's base hazard for relative risk is used to estimate survival across time.
+    The combination of relative risk and base hazard is used to generate survival curves, like Cox proportional hazards.
+    Implemented using Jax. All activation functions as assumed to be relu.
+
+    Parameters
+    ----------
+    hidden_layers : list of ints, default=[100,]
+        The ith element represents the number of neurons in the ith
+        hidden layer.
+
+    alpha : float , default=0.0
+        Constant that multiplies the penalty terms. Used to penalize coefficients
+        durring training.
+
+    l1_ratio : float, default=0.5
+        The ElasticNet mixing parameter, with ``0 <= l1_ratio <= 1``. For
+        ``l1_ratio = 0`` the penalty is an L2 penalty. ``For l1_ratio = 1`` it
+        is an L1 penalty.  For ``0 < l1_ratio < 1``, the penalty is a
+        combination of L1 and L2.
+
+    init_dis : {"uniform", "normal"}, default=uniform
+        Distribution of the He/Kaiming weight initialization.
+
+    track_loss : bool, default=True
+        If True, changes to loss over training itteration is tracked.
+
+    max_iter : int, default=100
+        The maximum number of iterations.
+
+    gradient_updater : {"adadelta", "adagrad", "adam", "adamax", "rmsprop"}, default="adam"
+        Gradient updating strategy, used for training. Corresponds to optax Optimizers.
+
+    learning_rate : float, default=0.01
+        Corresponds to optax Optimizer parameter.
+
+    beta1 : float, default=0.01
+        Corresponds to optax Optimizer parameter.
+
+    beta2 : float, default=0.9
+        Corresponds to optax Optimizer parameter.
+
+    epsilon : float, default =0.0000001
+        Corresponds to optax Optimizer parameter.
+
+    rho : float, default=0.95
+        Corresponds to optax Optimizer parameter.
+
+    decay : float, default= 0.9
+        Corresponds to optax Optimizer parameter.
+
+    Attributes
+    ----------
+    coef_ : ndarray of ndarray of shape (n_features,)
+        Coefficients of the model.
+
+    _loss : float
+        Negative log likelihood of the model at the point of convergence.
+
+    _breslow_base_hazard : ndarray of ndarray of shape (max_time_seen,) or shape (n_strata,max_time_seen)
+        Base hazard generated from training data, used for predicting survival curves.
+
+    _breslow_base_survival : ndarray of ndarray of shape (max_time_seen,) or shape (n_strata,max_time_seen)
+        Base survival generated from training data, used for predicting survival curves.
+
+    losses_per_steps : list of float
+        If track_loss is set to True, loss at each itteration while training.
+    """
 
     _parameter_constraints: dict = {
         "hidden_layers": [list],
@@ -973,11 +1518,38 @@ class CoxNNetPH(_SurvivalPredictBase):
         check_input: bool = True,
         times_start: Optional[np.ndarray[tuple[int], np.dtype[np.int64]]] = None,
     ):
+        """
+        Fit model.
+
+        Parameters
+        ----------
+        X : array-like of shape (n_samples, n_features)
+            Training data.
+
+        times : array-like of shape (n_samples), dtype=np.int64
+            Point in time last observed.
+
+        events : array-like of shape (n_samples), dtype=np.bool_
+            Experianed event.
+
+        strata : array-like of shape (n_samples,), dtype=np.int64, default=None
+            If passed in, associated strata for per observation.
+
+        check_input : bool, default=True
+            If True, validates and casts inputs.
+
+        times_start : array-like of shape (n_samples, dtype=np.int64), default=None
+            Starting point for observation. If not passed in, all times_start times are assumed to be 0.
+
+        Returns
+        -------
+        object
+            Fitted Estimator.
+        """
 
         uses_left_censorship = times_start is not None
 
         self._uses_strata = strata is not None
-
 
         if check_input:
             X, times, events = validate_survival_data(X, times, events)
@@ -1073,7 +1645,33 @@ class CoxNNetPH(_SurvivalPredictBase):
 
         return self
 
-    def predict(self, X, strata=None, max_time: Optional[int] = None):
+    def predict(
+        self,
+        X: np.ndarray[tuple[int, int], np.dtype[np.float64]],
+        strata: Optional[np.ndarray[tuple[int], np.dtype[np.int64]]] = None,
+        max_time: Optional[int] = None,
+    ) -> np.ndarray[tuple[int, int], np.dtype[np.float64]]:
+        """
+        Build survival curves on an array of vectors X.
+
+        Parameters
+        ----------
+        X : array-like of shape (n_samples, n_features)
+            Predicting data.
+
+        strata : array-like of shape (n_samples,), dtype=np.int64, default=None
+            If passed in, associated strata for per observation.
+
+        max_time : int, default=None
+            Maximum time of built survival curves. If none, maximum time is max time seen on training data.
+
+        Returns
+        -------
+        ndarray of shape (n_samples, max_time), dtype=np.float64
+            The estimated survival curves, the left-most column is the probability of survival at time 1,
+            and the right-most column ends at max_time.
+        """
+
         check_is_fitted(self)
 
         if max_time is None:
@@ -1126,7 +1724,24 @@ class CoxNNetPH(_SurvivalPredictBase):
 
             return base_survival ** risk[:, None]
 
-    def predict_risk(self, X):
+    def predict_risk(
+        self, X: np.ndarray[tuple[int, int], np.dtype[np.float64]]
+    ) -> np.ndarray[tuple[int], np.dtype[np.float64]]:
+        """
+        Build relative risk on an array of vectors X.
+
+        Parameters
+        ----------
+        X : array-like of shape (n_samples, n_features)
+            Predicting data.
+
+        Returns
+        -------
+        ndarray of shape (n_samples), dtype=np.float64
+            The Relative risk of X, used under the hood for building survival curves.
+            Relative risk is what 'Concordance Index' examines.
+        """
+
         check_is_fitted(self)
 
         X = np.array(X)
@@ -1135,6 +1750,33 @@ class CoxNNetPH(_SurvivalPredictBase):
 
 
 class AalenAdditiveHazard(_SurvivalPredictBase):
+    """
+    Aalen Additive Hazards.
+
+    Aalen Additive Hazards is a linear multivariate non-parametric estimation of hazard.
+    It allows for each interval of time and feature to have an associated coefficient,
+    allowing for the effects of features to change over time. Aalen Additive Hazards simply runs
+    (ridge) linear regressions at different points in time, 1 if the event and 0 otherwise
+    , censored times are ignored. The results of the linear regressions are used for generating
+    hazards and ultimately survival curves. AalenAdditiveHazard models are tricky to train.
+
+    Parameters
+    ----------
+    clip_hazards : bool , default=True
+        If True, clips hazards to be between 0 and 1. Ensuring that hazard values are realistic.
+
+    alpha : float , default=0.0
+        Constant that multiplies the penalty terms. Used to penalize coefficients
+        durring training.
+
+    Attributes
+    ----------
+    _hazard_weights : ndarray of ndarray of shape (n_features,n)
+        Coefficients of the model.
+
+    _hazard_weights_times : ndarray of ndarray of shape (n)
+        Times associated for each interval of time in the  _hazard_weights array.
+    """
 
     _parameter_constraints: dict = {
         "clip_hazards": ["boolean"],
@@ -1154,6 +1796,32 @@ class AalenAdditiveHazard(_SurvivalPredictBase):
         check_input: bool = True,
         times_start: Optional[np.ndarray[tuple[int], np.dtype[np.int64]]] = None,
     ):
+        """
+        Fit model.
+
+        Parameters
+        ----------
+        X : array-like of shape (n_samples, n_features)
+            Training data.
+
+        times : array-like of shape (n_samples), dtype=np.int64
+            Point in time last observed.
+
+        events : array-like of shape (n_samples), dtype=np.bool_
+            Experianed event.
+
+        check_input : bool, default=True
+            If True, validates and casts inputs.
+
+        times_start : array-like of shape (n_samples, dtype=np.int64), default=None
+            Starting point for observation. If not passed in, all times_start times are assumed to be 0.
+
+        Returns
+        -------
+        object
+            Fitted Estimator.
+        """
+
         if check_input:
             X, times, events = validate_survival_data(X, times, events)
 
@@ -1177,7 +1845,27 @@ class AalenAdditiveHazard(_SurvivalPredictBase):
 
         return self
 
-    def predict(self, X, max_time: Optional[int] = None):
+    def predict(
+        self, X, max_time: Optional[int] = None
+    ) -> np.ndarray[tuple[int], np.dtype[np.float64]]:
+        """
+        Build survival curves on an array of vectors X.
+
+        Parameters
+        ----------
+        X : array-like of shape (n_samples, n_features)
+            Predicting data.
+
+        max_time : int, default=None
+            Maximum time of built survival curves. If none, maximum time is max time seen on training data.
+
+        Returns
+        -------
+        ndarray of shape (n_samples, max_time), dtype=np.float64
+            The estimated survival curves, the left-most column is the probability of survival at time 1,
+            and the right-most column ends at max_time.
+        """
+
         check_is_fitted(self)
 
         X = _as_numeric_np_array(X)
@@ -1198,6 +1886,41 @@ class AalenAdditiveHazard(_SurvivalPredictBase):
 
 
 class CoxElasticNetPH(_SurvivalPredictBase):
+    """
+    Cox Proportional Hazards with Elastic Net penalty and feature shrinkage.
+
+    A Cox Proportional Hazards model with Elastic Net penalty estimated via coordinate descent.
+    The coordinate descent algorithm for Elastic Net/Lasso allows shrinking features asynchronously
+    as the ‘alpha’ parameter increases, and the ‘l1_ratio’ is greater than 0. The raphson-newton-like
+    for coordinate descent described in Simon et al. (2011)[1] is used.
+
+    Only ‘breslow’ ties are available; the literature is currently unclear on how to add stratification
+    to Simon’s algorithm.
+
+    Parameters
+    ----------
+    alpha : float , default=0.0
+        Constant that multiplies the penalty terms. Used to penalize coefficients
+        durring training.
+
+    l1_ratio : float, default=0.5
+        The ElasticNet mixing parameter, with ``0 <= l1_ratio <= 1``. For
+        ``l1_ratio = 0`` the penalty is an L2 penalty. ``For l1_ratio = 1`` it
+        is an L1 penalty.  For ``0 < l1_ratio < 1``, the penalty is a
+        combination of L1 and L2.
+
+    max_iter : int, default=100
+        The maximum number of iterations.
+
+    tol : float, default=1e-9
+        The tolerance for the optimization: if the updates are smaller or equal to
+        ``tol``, the optimization code checks the dual gap for optimality and continues
+        until it is smaller or equal to ``tol``.
+
+    References
+    ----------
+    [1] Simon N, Friedman J, Hastie T, Tibshirani R. Regularization Paths for Cox's Proportional Hazards Model via Coordinate Descent. J Stat Softw. 2011 Mar;39(5):1-13. doi: 10.18637/jss.v039.i05. PMID: 27065756; PMCID: PMC4824408.
+    """
 
     _parameter_constraints: dict = {
         "alpha": [Interval(Real, 0, None, closed="left")],
@@ -1228,6 +1951,31 @@ class CoxElasticNetPH(_SurvivalPredictBase):
         check_input: bool = True,
         times_start: Optional[np.ndarray[tuple[int], np.dtype[np.int64]]] = None,
     ):
+        """
+        Fit model.
+
+        Parameters
+        ----------
+        X : array-like of shape (n_samples, n_features)
+            Training data.
+
+        times : array-like of shape (n_samples), dtype=np.int64
+            Point in time last observed.
+
+        events : array-like of shape (n_samples), dtype=np.bool_
+            Experianed event.
+
+        check_input : bool, default=True
+            If True, validates and casts inputs.
+
+        times_start : array-like of shape (n_samples, dtype=np.int64), default=None
+            Starting point for observation. If not passed in, all times_start times are assumed to be 0.
+
+        Returns
+        -------
+        object
+            Fitted Estimator.
+        """
         use_left_censorship = times_start is not None
 
         if check_input:
@@ -1265,7 +2013,29 @@ class CoxElasticNetPH(_SurvivalPredictBase):
         self.is_fitted_ = True
         return self
 
-    def predict(self, X, max_time: Optional[int] = None):
+    def predict(
+        self,
+        X: np.ndarray[tuple[int, int], np.dtype[np.float64]],
+        max_time: Optional[int] = None,
+    ) -> np.ndarray[tuple[int, int], np.dtype[np.float64]]:
+        """
+        Build survival curves on an array of vectors X.
+
+        Parameters
+        ----------
+        X : array-like of shape (n_samples, n_features)
+            Predicting data.
+
+        max_time : int, default=None
+            Maximum time of built survival curves. If none, maximum time is max time seen on training data.
+
+        Returns
+        -------
+        ndarray of shape (n_samples, max_time), dtype=np.float64
+            The estimated survival curves, the left-most column is the probability of survival at time 1,
+            and the right-most column ends at max_time.
+        """
+
         check_is_fitted(self)
 
         if max_time is None:
@@ -1290,7 +2060,24 @@ class CoxElasticNetPH(_SurvivalPredictBase):
 
             return np.hstack([survival, impulted_values])
 
-    def predict_risk(self, X):
+    def predict_risk(
+        self, X: np.ndarray[tuple[int, int], np.dtype[np.float64]]
+    ) -> np.ndarray[tuple[int], np.dtype[np.float64]]:
+        """
+        Build relative risk on an array of vectors X.
+
+        Parameters
+        ----------
+        X : array-like of shape (n_samples, n_features)
+            Predicting data.
+
+        Returns
+        -------
+        ndarray of shape (n_samples), dtype=np.float64
+            The Relative risk of X, used under the hood for building survival curves.
+            Relative risk is what 'Concordance Index' examines.
+        """
+
         check_is_fitted(self)
 
         return np.exp(np.dot(X, self.coef_))
