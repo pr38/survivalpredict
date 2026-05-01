@@ -23,8 +23,9 @@ release = '0.0.1'
 extensions = [
     'sphinx.ext.todo',
     'sphinx.ext.autodoc',
-    #'sphinx.ext.autosummary',
-    #'sphinx_autodoc_typehints',
+    'sphinx.ext.autosummary',
+    'sphinx.ext.napoleon',
+    'sphinx_design',
     'numpydoc' ]
 
 templates_path = ['_templates']

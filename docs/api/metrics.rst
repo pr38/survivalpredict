@@ -5,6 +5,7 @@ metrics
 
 
 .. autosummary::
+    :nosignatures:
 
     brier_scores_administrative
     integrated_brier_score_administrative

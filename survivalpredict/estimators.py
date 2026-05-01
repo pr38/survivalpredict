@@ -92,19 +92,22 @@ class CoxProportionalHazard(_SurvivalPredictBase):
     """
     Cox Proportional Hazards.
 
-    The ‘Cox Proportional Hazards’ model is a linear semi-parametric relative risk model.
-    A staple of survival analysis. Cox more or less trains on ranking relative risk to estimate its coefficients.
-    After training, the 'Breslow estimator' is run on relative risk and events over time to build the base hazard.
-    A product of the relative risk and base hazard at each point in time is used to build the survival curves.
+    The ‘Cox Proportional Hazards’ model is a linear semi-parametric relative
+    risk model. A staple of survival analysis. Cox more or less trains on
+    ranking relative risk to estimate its coefficients. After training, the
+    'Breslow estimator' is run on relative risk and events over time to build
+    the base hazard. A product of the relative risk and base hazard at each
+    point in time is used to build the survival curves.
 
-    The reason Cox is called ‘semi-parametric’ is that it does not try to directly estimate the hazard but only the relative hazard.
-    This is why a ‘partial-likelihood’ is what Cox estimates on.
+    The Cox is called ‘semi-parametric’ due to the fact that is does not
+    directly estimate the hazard, but only relative hazard. Hence,
+    ‘partial-likelihood’ is what Cox estimates maximizes.
 
     Parameters
     ----------
-    alpha : float , default=0.0
-        Constant that multiplies the penalty terms. Used to penalize coefficients
-        durring training.
+    alpha : float, default=0.0
+        Constant that multiplies the penalty terms. Used to penalize
+        coefficients durring training.
 
     l1_ratio : float, default=0.5
         The ElasticNet mixing parameter, with ``0 <= l1_ratio <= 1``. For
@@ -112,23 +115,24 @@ class CoxProportionalHazard(_SurvivalPredictBase):
         is an L1 penalty.  For ``0 < l1_ratio < 1``, the penalty is a
         combination of L1 and L2.
 
-    max_iter : int, default=100
+    max_iter : Optional[int], default=100
         The maximum number of iterations.
 
     ties : {"breslow", "efron"}, default='breslow'
-        The method to handle ‘tied’ event times. Cox’s coefficients are intended
-        to represent the relative risk of observations in proportion to each other,
-        independent of time. The presence of ‘tied’ or concurrent failures muddies
-        the interpretability of Cox’s coefficients.‘Breslow ties’ ignore said issue
-        and perform best on predictions. ‘Efron ties’ shaves some of the influence
-        of some tied data on the likelihood in hopes of solving said problem, at the price
-        of prediction performance. Use Breslow if prediction performance is your primary
-        concern, and use Efron in cases of inference.
+        The method to handle ‘tied’ event times. Cox’s coefficients are
+        intended to represent the relative risk of observations in proportion
+        to each other, independent of time. The presence of ‘tied’ or
+        concurrent failures muddies the interpretability of Cox’s
+        coefficients.‘Breslow ties’ ignore said issue and perform best on
+        predictions. ‘Efron ties’ shaves some of the influence of some tied
+        data on the likelihood in hopes of solving said problem, at the price
+        of prediction performance. Use Breslow if prediction performance is
+        your primary concern, and use Efron in cases of inference.
 
     tol : float, default=1e-9
-        The tolerance for the optimization: if the updates are smaller or equal to
-        ``tol``, the optimization code checks the dual gap for optimality and continues
-        until it is smaller or equal to ``tol``.
+        The tolerance for the optimization: if the updates are smaller or equal
+        to ``tol``, the optimization code checks the dual gap for optimality
+        and continues until it is smaller or equal to ``tol``.
 
     Attributes
     ----------
@@ -139,10 +143,12 @@ class CoxProportionalHazard(_SurvivalPredictBase):
         Negative log likelihood of the model at the point of convergence.
 
     _breslow_base_hazard : ndarray of ndarray of shape (max_time_seen,) or shape (n_strata,max_time_seen)
-        Base hazard generated from training data, used for predicting survival curves.
+        Base hazard generated from training data, used for predicting survival
+        curves.
 
     _breslow_base_survival : ndarray of ndarray of shape (max_time_seen,) or shape (n_strata,max_time_seen)
-        Base survival generated from training data, used for predicting survival curves.
+        Base survival generated from training data, used for predicting
+        survival curves.
     """
 
     _parameter_constraints: dict = {
@@ -199,7 +205,8 @@ class CoxProportionalHazard(_SurvivalPredictBase):
             If True, validates and casts inputs.
 
         times_start : array-like of shape (n_samples, dtype=np.int64), default=None
-            Starting point for observation. If not passed in, all times_start times are assumed to be 0.
+            Starting point for observation. If not passed in, all times_start
+            times are assumed to be 0.
 
         Returns
         -------
@@ -395,7 +402,8 @@ class CoxProportionalHazard(_SurvivalPredictBase):
             If passed in, associated strata for per observation.
 
         max_time : int, default=None
-            Maximum time of built survival curves. If none, maximum time is max time seen on training data.
+            Maximum time of built survival curves. If none, maximum time is max
+            time seen on training data.
 
         Returns
         -------
@@ -473,21 +481,23 @@ class ParametricDiscreteTimePH(_SurvivalPredictBase):
     """
     Parametric Discrete Time Proportional Hazards.
 
-    A fully parametric linear proportional hazards model.
-    Unlike Cox, both the coefficients and the base hazard are directly estimated from observed survival over time.
-    Various distributions are available as base hazards; namely, Chen, Weibull, Log-Normal,
-    Log-logistic, Gompertz, Gamma and Additive-Chen-Weibull[1] are available as hyperparameters.
-    Maximum likelihood is estimated using a survival distinct time likelihood[2] with censorship.
-    Implemented with Pymc/Pytensor, with either a Jax or numba backend.
+    A fully parametric linear proportional hazards model. Unlike Cox, both the
+    coefficients and the base hazard are directly estimated from observed
+    survival over time. Various distributions are available as base hazards;
+    namely, Chen, Weibull, Log-Normal, Log-logistic, Gompertz, Gamma and
+    Additive-Chen-Weibull[1] are available as hyperparameters. Maximum
+    likelihood is estimated using a survival distinct time likelihood[2] with
+    censorship. Implemented with Pymc/Pytensor, with either a Jax or numba
+    backend.
 
     Parameters
     ----------
     distribution : {"chen", "weibull","log_normal","log_logistic","gamma","gompertz","additive_chen_weibull"}, default='chen'
-        ...
+        Distribution of base hazard.
 
-    alpha : float , default=0.0
-        Constant that multiplies the penalty terms. Used to penalize coefficients
-        durring training.
+    alpha : float, default=0.0
+        Constant that multiplies the penalty terms. Used to penalize
+        coefficients durring training.
 
     l1_ratio : float, default=0.5
         The ElasticNet mixing parameter, with ``0 <= l1_ratio <= 1``. For
@@ -501,21 +511,27 @@ class ParametricDiscreteTimePH(_SurvivalPredictBase):
         mode is multiprocessing safe and has a fast compile time, but runs slower than the other modes.
         ‘JAX’ is a good default, but ‘NUMBA’ is recommended when using multiprocessing.
 
-    strata_uses_pytensor_scan : bool, default=True
-        If strata are present and ‘strata_uses_pytensor_scan’ is True, Pytensor's 'scan' functionality
-        is used to map strata to observations during training. Using Pytensor scan might increase the
-        Pytensor compile time, but will lead to a faster runtime. For considerable data and a high
-        quantity of starta, it is recommended to set strata_uses_pytensor_scan to True.
+    strata_uses_pytensor_scan : bool, default=False
+        If strata are present and ‘strata_uses_pytensor_scan’ is True,
+        Pytensor's 'scan' functionality is used to map strata to observations
+        during training. Using Pytensor scan might increase the Pytensor
+        compile time, but will lead to a faster runtime. For considerable data
+        and a high quantity of starta, it is recommended to set
+        strata_uses_pytensor_scan to True.
 
-    coef_prior_normal_sigma : float,
-        This class runs a Pymc model under the hood. The coefficients are modeled as normal distributions.
-        This parameter is the sigma of the prior. The larger the sigma, the wider the possible set of values
-        at coverage. It is recommended to scale the data to avoid tuning this parameter.
+    coef_prior_normal_sigma : float, default=1.5
+        This class runs a Pymc model under the hood. The coefficients are
+        modeled as normal distributions. This parameter is the sigma of the
+        prior. The larger the sigma, the wider the possible set of values 
+        coverage. It is recommended to scale the data to avoid tuning this
+        parameter.
 
-    base_harard_prior_exponential_lam : float, default = 1.5
-        This class runs a Pymc model under the hood. The base hazard distrabution's parameters are modeled as exponential distributions.
-        This parameter is the 'lam' of the prior of the base hazard distrabution' parameters.
-        It is recommended to scale the data to avoid tuning this parameter.
+    base_harard_prior_exponential_lam : float, default=5.0
+        This class runs a Pymc model under the hood. The base hazard
+        distrabution's parameters are modeled as exponential distributions.
+        This parameter is the 'lam' of the prior of the base hazard
+        distrabution' parameters. It is recommended to scale the data to avoid
+        tuning this parameter.
 
     scipy_minimize_method : {"nelder-mead","powell","CG","BFGS","Newton-CG","L-BFGS-B","TNC","COBYLA","SLSQP","trust-constr","dogleg","trust-ncg","trust-exact","trust-krylov","basinhopping",}, default='L-BFGS-B'
         This class runs a Pymc model under the hood. Durring training we simply find the 'Maximum likelihood estimation'(MLE)/
@@ -524,9 +540,14 @@ class ParametricDiscreteTimePH(_SurvivalPredictBase):
     References
     ----------
 
-    [1] Thanh Thach T, Briš R. An additive Chen-Weibull distribution and its applications in reliability modeling. Qual Reliab Engng Int. 2021;37:352–373. https://doi.org/10.1002/qre.2740
+    [1] Thanh Thach T, Briš R. An additive Chen-Weibull distribution and its
+    applications in reliability modeling. Qual Reliab Engng Int.
+    2021;37:352–373. https://doi.org/10.1002/qre.2740
 
-    [2] Suresh K, Severn C, Ghosh D. Survival prediction models: an introduction to discrete-time modeling. BMC Med Res Methodol. 2022 Jul 26;22(1):207. doi: 10.1186/s12874-022-01679-6. PMID: 35883032; PMCID: PMC9316420.
+    [2] Suresh K, Severn C, Ghosh D. Survival prediction models: an
+    introduction to discrete-time modeling. BMC Med Res Methodol. 2022 Jul
+    26;22(1):207. doi: 10.1186/s12874-022-01679-6. PMID: 35883032; PMCID:
+    PMC9316420.
     """
 
     _parameter_constraints: dict = {
@@ -757,14 +778,16 @@ class ParametricDiscreteTimePH(_SurvivalPredictBase):
         strata : array-like of shape (n_samples,), dtype=np.int64, default=None
             If passed in, associated strata for per observation.
 
-        max_time : int, default=None
-            Maximum time of built survival curves. If none, maximum time is max time seen on training data.
+        max_time : Optional[int], default=None
+            Maximum time of built survival curves. If none, maximum time is max
+            time seen on training data.
 
         Returns
         -------
         ndarray of shape (n_samples, max_time), dtype=np.float64
-            The estimated survival curves, the left-most column is the probability of survival at time 1,
-            and the right-most column ends at max_time.
+            The estimated survival curves, the left-most column is the
+            probability of survival at time 1, and the right-most column ends
+            at max_time.
         """
 
         check_is_fitted(self)
@@ -891,10 +914,12 @@ class ParametricDiscreteTimePH(_SurvivalPredictBase):
             Experianed event.
 
         max_time : int, default=None
-            Maximum time of built survival curves. If none, maximum time is max time seen on training data.
+            Maximum time of built survival curves. If none, maximum time is max
+            time seen on training data.
 
         labes_names : list of str, default=None
-            Names for feature, allows for parameters associated with each feature to be named accordingly.
+            Names for feature, allows for parameters associated with each
+            feature to be named accordingly.
 
         strata : array-like of shape (n_samples,), dtype=np.int64, default=None
             If passed in, associated strata for per observation.
@@ -907,7 +932,7 @@ class ParametricDiscreteTimePH(_SurvivalPredictBase):
 
         Returns
         -------
-        pymc.Model
+        "pymc.Model"
         """
 
         base_hazard_pdf_callable, n_base_hazard_prams = (
@@ -960,8 +985,8 @@ class KaplanMeierSurvivalEstimator(_SurvivalPredictBase):
     """
     The Kaplan-Meier estimate of the survival estimation.
 
-    Kaplan-Meier is a univariate non-parametric survival curve estimation.
-    It can be useful as a baseline/dummy estimator.
+    Kaplan-Meier is a univariate non-parametric survival curve estimation. It
+    can be useful as a baseline/dummy estimator.
     """
 
     def fit(
@@ -1107,8 +1132,9 @@ class KaplanMeierSurvivalEstimator(_SurvivalPredictBase):
         Returns
         -------
         ndarray of shape (n_samples, max_time), dtype=np.float64
-            The estimated survival curves, the left-most column is the probability of survival at time 1,
-            and the right-most column ends at max_time.
+            The estimated survival curves, the left-most column is the
+            probability of survival at time 1, and the right-most column ends
+            at max_time.
         """
 
         check_is_fitted(self)
@@ -1188,10 +1214,9 @@ class KNeighborsSurvival(_SurvivalPredictBase):
           based on the values passed to :meth:`fit` method.
 
     leaf_size : int, default=30
-        Leaf size passed to BallTree or KDTree.  This can affect the
-        speed of the construction and query, as well as the memory
-        required to store the tree.  The optimal value depends on the
-        nature of the problem.
+        Leaf size passed to BallTree or KDTree.  This can affect the speed of
+        the construction and query, as well as the memory required to store the
+        tree.  The optimal value depends on the nature of the problem.
 
     p : float, default=2
         Power parameter for the Minkowski metric. When p = 1, this is equivalent
@@ -1203,8 +1228,8 @@ class KNeighborsSurvival(_SurvivalPredictBase):
         Metric to use for distance computation. Default is "minkowski", which
         results in the standard Euclidean distance when p = 2. See the
         documentation of `scipy.spatial.distance
-        <https://docs.scipy.org/doc/scipy/reference/spatial.distance.html>`_ and
-        the metrics listed in
+        <https://docs.scipy.org/doc/scipy/reference/spatial.distance.html>`_
+        and the metrics listed in
         :class:`~sklearn.metrics.pairwise.distance_metrics` for valid metric
         values.
 
@@ -1344,13 +1369,15 @@ class KNeighborsSurvival(_SurvivalPredictBase):
             Predicting data.
 
         max_time : int, default=None
-            Maximum time of built survival curves. If none, maximum time is max time seen on training data.
+            Maximum time of built survival curves. If none, maximum time is max
+            time seen on training data.
 
         Returns
         -------
         ndarray of shape (n_samples, max_time), dtype=np.float64
-            The estimated survival curves, the left-most column is the probability of survival at time 1,
-            and the right-most column ends at max_time.
+            The estimated survival curves, the left-most column is the
+            probability of survival at time 1, and the right-most column ends
+            at max_time.
         """
 
         check_is_fitted(self)
@@ -1385,21 +1412,22 @@ class CoxNNetPH(_SurvivalPredictBase):
     """
     Artificial neural network proportional hazards Model.
 
-    A neural network model for estimating relative risk.
-    Cox proportional hazards model's 'negative log likelihood for Breslow ties' is used as a loss function.
-    Breslow's base hazard for relative risk is used to estimate survival across time.
-    The combination of relative risk and base hazard is used to generate survival curves, like Cox proportional hazards.
+    A neural network model for estimating relative risk. Cox proportional
+    hazards model's 'negative log likelihood for Breslow ties' is used as a
+    loss function. Breslow's base hazard for relative risk is used to estimate
+    survival across time. The combination of relative risk and base hazard is
+    used to generate survival curves, like Cox proportional hazards.
     Implemented using Jax. All activation functions as assumed to be relu.
 
     Parameters
     ----------
     hidden_layers : list of ints, default=[100,]
-        The ith element represents the number of neurons in the ith
-        hidden layer.
+        The ith element represents the number of neurons in the ith hidden
+        layer.
 
-    alpha : float , default=0.0
-        Constant that multiplies the penalty terms. Used to penalize coefficients
-        durring training.
+    alpha : float, default=0.0
+        Constant that multiplies the penalty terms. Used to penalize
+        coefficients durring training.
 
     l1_ratio : float, default=0.5
         The ElasticNet mixing parameter, with ``0 <= l1_ratio <= 1``. For
@@ -1407,7 +1435,7 @@ class CoxNNetPH(_SurvivalPredictBase):
         is an L1 penalty.  For ``0 < l1_ratio < 1``, the penalty is a
         combination of L1 and L2.
 
-    init_dis : {"uniform", "normal"}, default=uniform
+    init_dis : Literal["uniform", "normal"], default="uniform"
         Distribution of the He/Kaiming weight initialization.
 
     track_loss : bool, default=True
@@ -1417,24 +1445,25 @@ class CoxNNetPH(_SurvivalPredictBase):
         The maximum number of iterations.
 
     gradient_updater : {"adadelta", "adagrad", "adam", "adamax", "rmsprop"}, default="adam"
-        Gradient updating strategy, used for training. Corresponds to optax Optimizers.
+        Gradient updating strategy, used for training. Corresponds to optax
+        Optimizers.
 
     learning_rate : float, default=0.01
         Corresponds to optax Optimizer parameter.
 
-    beta1 : float, default=0.01
+    beta1 : float, default=0.9
         Corresponds to optax Optimizer parameter.
 
-    beta2 : float, default=0.9
+    beta2 : float, default=0.999
         Corresponds to optax Optimizer parameter.
 
-    epsilon : float, default =0.0000001
+    epsilon : float, default=0.0000001
         Corresponds to optax Optimizer parameter.
 
     rho : float, default=0.95
         Corresponds to optax Optimizer parameter.
 
-    decay : float, default= 0.9
+    decay : float, default=0.9
         Corresponds to optax Optimizer parameter.
 
     Attributes
@@ -1446,10 +1475,12 @@ class CoxNNetPH(_SurvivalPredictBase):
         Negative log likelihood of the model at the point of convergence.
 
     _breslow_base_hazard : ndarray of ndarray of shape (max_time_seen,) or shape (n_strata,max_time_seen)
-        Base hazard generated from training data, used for predicting survival curves.
+        Base hazard generated from training data, used for predicting survival
+        curves.
 
     _breslow_base_survival : ndarray of ndarray of shape (max_time_seen,) or shape (n_strata,max_time_seen)
-        Base survival generated from training data, used for predicting survival curves.
+        Base survival generated from training data, used for predicting
+        survival curves.
 
     losses_per_steps : list of float
         If track_loss is set to True, loss at each itteration while training.
@@ -1539,7 +1570,8 @@ class CoxNNetPH(_SurvivalPredictBase):
             If True, validates and casts inputs.
 
         times_start : array-like of shape (n_samples, dtype=np.int64), default=None
-            Starting point for observation. If not passed in, all times_start times are assumed to be 0.
+            Starting point for observation. If not passed in, all times_start
+            times are assumed to be 0.
 
         Returns
         -------
@@ -1663,13 +1695,15 @@ class CoxNNetPH(_SurvivalPredictBase):
             If passed in, associated strata for per observation.
 
         max_time : int, default=None
-            Maximum time of built survival curves. If none, maximum time is max time seen on training data.
+            Maximum time of built survival curves. If none, maximum time is max
+            time seen on training data.
 
         Returns
         -------
         ndarray of shape (n_samples, max_time), dtype=np.float64
-            The estimated survival curves, the left-most column is the probability of survival at time 1,
-            and the right-most column ends at max_time.
+            The estimated survival curves, the left-most column is the
+            probability of survival at time 1, and the right-most column ends
+            at max_time.
         """
 
         check_is_fitted(self)
@@ -1738,8 +1772,8 @@ class CoxNNetPH(_SurvivalPredictBase):
         Returns
         -------
         ndarray of shape (n_samples), dtype=np.float64
-            The Relative risk of X, used under the hood for building survival curves.
-            Relative risk is what 'Concordance Index' examines.
+            The Relative risk of X, used under the hood for building survival
+            curves. Relative risk is what 'Concordance Index' examines.
         """
 
         check_is_fitted(self)
@@ -1753,21 +1787,24 @@ class AalenAdditiveHazard(_SurvivalPredictBase):
     """
     Aalen Additive Hazards.
 
-    Aalen Additive Hazards is a linear multivariate non-parametric estimation of hazard.
-    It allows for each interval of time and feature to have an associated coefficient,
-    allowing for the effects of features to change over time. Aalen Additive Hazards simply runs
-    (ridge) linear regressions at different points in time, 1 if the event and 0 otherwise
-    , censored times are ignored. The results of the linear regressions are used for generating
-    hazards and ultimately survival curves. AalenAdditiveHazard models are tricky to train.
+    Aalen Additive Hazards is a linear multivariate non-parametric estimation
+    of hazard. It allows for each interval of time and feature to have an
+    associated coefficient, allowing for the effects of features to change over
+    time. Aalen Additive Hazards simply runs (ridge) linear regressions at
+    different points in time, 1 if the event and 0 otherwise , censored times
+    are ignored. The results of the linear regressions are used for generating
+    hazards and ultimately survival curves. AalenAdditiveHazard models are
+    tricky to train.
 
     Parameters
     ----------
-    clip_hazards : bool , default=True
-        If True, clips hazards to be between 0 and 1. Ensuring that hazard values are realistic.
+    clip_hazards : bool, default=True
+        If True, clips hazards to be between 0 and 1. Ensuring that hazard
+        values are realistic.
 
-    alpha : float , default=0.0
-        Constant that multiplies the penalty terms. Used to penalize coefficients
-        durring training.
+    alpha : float, default=0.0
+        Constant that multiplies the penalty terms. Used to penalize
+        coefficients durring training.
 
     Attributes
     ----------
@@ -1775,7 +1812,8 @@ class AalenAdditiveHazard(_SurvivalPredictBase):
         Coefficients of the model.
 
     _hazard_weights_times : ndarray of ndarray of shape (n)
-        Times associated for each interval of time in the  _hazard_weights array.
+        Times associated for each interval of time in the  _hazard_weights
+        array.
     """
 
     _parameter_constraints: dict = {
@@ -1814,7 +1852,8 @@ class AalenAdditiveHazard(_SurvivalPredictBase):
             If True, validates and casts inputs.
 
         times_start : array-like of shape (n_samples, dtype=np.int64), default=None
-            Starting point for observation. If not passed in, all times_start times are assumed to be 0.
+            Starting point for observation. If not passed in, all times_start
+            times are assumed to be 0.
 
         Returns
         -------
@@ -1856,14 +1895,16 @@ class AalenAdditiveHazard(_SurvivalPredictBase):
         X : array-like of shape (n_samples, n_features)
             Predicting data.
 
-        max_time : int, default=None
-            Maximum time of built survival curves. If none, maximum time is max time seen on training data.
+        max_time : Optional[int], default=None
+            Maximum time of built survival curves. If none, maximum time is max
+            time seen on training data.
 
         Returns
         -------
         ndarray of shape (n_samples, max_time), dtype=np.float64
-            The estimated survival curves, the left-most column is the probability of survival at time 1,
-            and the right-most column ends at max_time.
+            The estimated survival curves, the left-most column is the
+            probability of survival at time 1, and the right-most column ends
+            at max_time.
         """
 
         check_is_fitted(self)
@@ -1889,19 +1930,20 @@ class CoxElasticNetPH(_SurvivalPredictBase):
     """
     Cox Proportional Hazards with Elastic Net penalty and feature shrinkage.
 
-    A Cox Proportional Hazards model with Elastic Net penalty estimated via coordinate descent.
-    The coordinate descent algorithm for Elastic Net/Lasso allows shrinking features asynchronously
-    as the ‘alpha’ parameter increases, and the ‘l1_ratio’ is greater than 0. The raphson-newton-like
+    A Cox Proportional Hazards model with Elastic Net penalty estimated via
+    coordinate descent. The coordinate descent algorithm for Elastic Net/Lasso
+    allows shrinking features asynchronously as the ‘alpha’ parameter
+    increases, and the ‘l1_ratio’ is greater than 0. The raphson-newton-like
     for coordinate descent described in Simon et al. (2011)[1] is used.
 
-    Only ‘breslow’ ties are available; the literature is currently unclear on how to add stratification
-    to Simon’s algorithm.
+    Only ‘breslow’ ties are available; the literature is currently unclear on
+    how to add stratification to Simon’s algorithm.
 
     Parameters
     ----------
-    alpha : float , default=0.0
-        Constant that multiplies the penalty terms. Used to penalize coefficients
-        durring training.
+    alpha : float, default=0.0
+        Constant that multiplies the penalty terms. Used to penalize
+        coefficients durring training.
 
     l1_ratio : float, default=0.5
         The ElasticNet mixing parameter, with ``0 <= l1_ratio <= 1``. For
@@ -1913,13 +1955,16 @@ class CoxElasticNetPH(_SurvivalPredictBase):
         The maximum number of iterations.
 
     tol : float, default=1e-9
-        The tolerance for the optimization: if the updates are smaller or equal to
-        ``tol``, the optimization code checks the dual gap for optimality and continues
-        until it is smaller or equal to ``tol``.
+        The tolerance for the optimization: if the updates are smaller or equal
+        to ``tol``, the optimization code checks the dual gap for optimality
+        and continues until it is smaller or equal to ``tol``.
 
     References
     ----------
-    [1] Simon N, Friedman J, Hastie T, Tibshirani R. Regularization Paths for Cox's Proportional Hazards Model via Coordinate Descent. J Stat Softw. 2011 Mar;39(5):1-13. doi: 10.18637/jss.v039.i05. PMID: 27065756; PMCID: PMC4824408.
+    [1] Simon N, Friedman J, Hastie T, Tibshirani R. Regularization Paths for
+    Cox's Proportional Hazards Model via Coordinate Descent. J Stat Softw. 2011
+    Mar;39(5):1-13. doi: 10.18637/jss.v039.i05. PMID: 27065756; PMCID:
+    PMC4824408.
     """
 
     _parameter_constraints: dict = {
@@ -1969,7 +2014,8 @@ class CoxElasticNetPH(_SurvivalPredictBase):
             If True, validates and casts inputs.
 
         times_start : array-like of shape (n_samples, dtype=np.int64), default=None
-            Starting point for observation. If not passed in, all times_start times are assumed to be 0.
+            Starting point for observation. If not passed in, all times_start
+            times are assumed to be 0.
 
         Returns
         -------
@@ -2027,13 +2073,15 @@ class CoxElasticNetPH(_SurvivalPredictBase):
             Predicting data.
 
         max_time : int, default=None
-            Maximum time of built survival curves. If none, maximum time is max time seen on training data.
+            Maximum time of built survival curves. If none, maximum time is max
+            time seen on training data.
 
         Returns
         -------
         ndarray of shape (n_samples, max_time), dtype=np.float64
-            The estimated survival curves, the left-most column is the probability of survival at time 1,
-            and the right-most column ends at max_time.
+            The estimated survival curves, the left-most column is the
+            probability of survival at time 1, and the right-most column ends
+            at max_time.
         """
 
         check_is_fitted(self)
@@ -2074,8 +2122,8 @@ class CoxElasticNetPH(_SurvivalPredictBase):
         Returns
         -------
         ndarray of shape (n_samples), dtype=np.float64
-            The Relative risk of X, used under the hood for building survival curves.
-            Relative risk is what 'Concordance Index' examines.
+            The Relative risk of X, used under the hood for building survival
+            curves. Relative risk is what 'Concordance Index' examines.
         """
 
         check_is_fitted(self)

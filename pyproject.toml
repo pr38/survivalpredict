@@ -29,6 +29,8 @@ test = [
 docs = [
     "numpydoc>=1.10.0",
     "sphinx==8.2.3",
+    "sphinx-design>=0.7.0",
+    "sphinxcontrib-napoleon>=0.7",
 ]
 
 [build-system]
