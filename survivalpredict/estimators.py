@@ -522,7 +522,7 @@ class ParametricDiscreteTimePH(_SurvivalPredictBase):
     coef_prior_normal_sigma : float, default=1.5
         This class runs a Pymc model under the hood. The coefficients are
         modeled as normal distributions. This parameter is the sigma of the
-        prior. The larger the sigma, the wider the possible set of values 
+        prior. The larger the sigma, the wider the possible set of values
         coverage. It is recommended to scale the data to avoid tuning this
         parameter.
 
@@ -701,6 +701,8 @@ class ParametricDiscreteTimePH(_SurvivalPredictBase):
             X, times, events = validate_survival_data(X, times, events)
             if strata is not None:
                 strata = _as_int_np_array(strata, "strata")
+            if times_start is not None:
+                times_start = validate_times_start_array(times_start, times)
 
         self._max_time_observed = np.max(times)
 

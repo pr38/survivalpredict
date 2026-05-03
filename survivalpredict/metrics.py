@@ -376,7 +376,7 @@ def brier_scores_administrative(
     """
     Brier scores for administrative censorship.
 
-    Administrative brier scores is apporicate in cases where censoring  is a
+    Administrative brier scores is appropriate  in cases where censoring  is a
     function of time. When a individual is marked as censored due to the fact
     that they have not experainced event at the last observed time, and not due
     to a lack of follow-up or drop out. This is ideal for industry, where
@@ -472,7 +472,7 @@ def integrated_brier_score_administrative(
     Integral of Brier scores for administrative censorship, to allow for a
     singular metric of performance. Lower the better.
 
-    Administrative brier scores is apporicate in cases where censoring  is a
+    Administrative brier scores is appropriate  in cases where censoring  is a
     function of time. When a individual is marked as censored due to the fact
     that they have not experainced event at the last observed time, and not due
     to a lack of follow-up or drop out. This is ideal for industry, where

@@ -12,7 +12,7 @@ from sklearn.model_selection import check_cv
 from sklearn.model_selection._search import ParameterGrid, ParameterSampler
 from sklearn.utils._param_validation import HasMethods, Interval, StrOptions
 
-from ._data_validation import validate_survival_data
+from ._data_validation import validate_survival_data, validate_times_start_array
 from .validation import _aggregate_score_dicts, _sur_fit_and_score
 
 __all__ = ["Sur_GridSearchCV", "Sur_RandomizedSearchCV"]
@@ -147,9 +147,37 @@ class Sur_BaseSearchCV(MetaEstimatorMixin, BaseEstimator, metaclass=ABCMeta):
         self.refit_time_ = refit_end_time - refit_start_time
 
     @_fit_context(prefer_skip_nested_validation=False)
-    def fit(self, X, times, events, strata=None, **params):
+    def fit(self, X, times, events, strata=None, times_start=None):
+        """
+        Run fit with sets of parameters.
+
+        Parameters
+        ----------
+        X : array-like of shape (n_samples, n_features)
+            Training data.
+
+        times : array-like of shape (n_samples), dtype=np.int64
+            Point in time last observed.
+
+        events : array-like of shape (n_samples), dtype=np.bool_
+            Experianed event.
+
+        strata : array-like of shape (n_samples,), dtype=np.int64, default=None
+            If passed in, associated strata for per observation.
+
+        times_start : array-like of shape (n_samples, dtype=np.int64), default=None
+            Starting point for observation. If not passed in, all times_start
+            times are assumed to be 0.
+
+        Returns
+        -------
+        object
+            Instance of fitted estimator.
+        """
 
         X, times, events = validate_survival_data(X, times, events)
+
+        times_start = validate_times_start_array(times_start, times)
 
         if strata is not None:
             self._uses_strata = True
@@ -200,6 +228,7 @@ class Sur_BaseSearchCV(MetaEstimatorMixin, BaseEstimator, metaclass=ABCMeta):
                 brier_score_max_time=brier_score_max_time,
                 error_score=self.error_score,
                 strata=strata,
+                times_start=times_start,
             )
             for parameters, (train, test) in product(
                 parameters_to_search,
@@ -215,12 +244,91 @@ class Sur_BaseSearchCV(MetaEstimatorMixin, BaseEstimator, metaclass=ABCMeta):
 
         self._process_results(results, n_candidates, n_splits)
 
-        self._refit_best_estimator(X, times, events, params, strata=strata)
+        self._refit_best_estimator(X, times, events, times_start=times_start, strata=strata)
 
         return self
 
 
 class Sur_GridSearchCV(Sur_BaseSearchCV):
+    """
+    Survivalpredict's native exhaustive search over specified parameter values
+    for an estimator.
+
+    The parameters of the estimator used to apply these methods are optimized
+    by cross-validated grid-search over a parameter grid. Like scikit-learn,
+    parallelism is achieved with joblib.
+
+    Parameters
+    ----------
+
+    estimator : estimator object
+        Survivalpredict native estimator.
+
+    param_grid : dict | list
+        Dictionary with parameters names (``str``) as keys and lists of
+        parameter settings to try as values, or a list of such dictionaries, in
+        which case the grids spanned by each dictionary in the list are
+        explored. This enables searching over any sequence of parameter
+        settings.
+
+    brier_score_max_time : Optional[int], default=None
+        Maximum time to evaluate survival curves for brier scores. If None,
+        will evaluate all times seen.
+
+    scoring : Optional[Literal["integrated_brier_score_administrative", "integrated_brier_score_ipcw"] | Callable], default=None
+        Strategy to evaluate the performance of the cross-validated model on
+        the test set.
+
+    n_jobs : int, default=None
+        Number of jobs to run in parallel. ``None`` means 1 unless in a
+        :obj:`joblib.parallel_backend` context. ``-1`` means using all
+        processors. See :term:`Glossary <n_jobs>` for more details.
+
+    refit : bool, str, or callable, default=True
+        Refit an estimator using the best found parameters on the whole
+        dataset.
+
+    cv : int, cross-validation generator or an iterable, default=None
+        Determines the cross-validation splitting strategy. Fully compatible
+        with scikit-learn CV components.
+
+        Controls the number of jobs that get dispatched during parallel
+        execution. Reducing this number can be useful to avoid an explosion of
+        memory consumption when more jobs get dispatched than CPUs can process.
+        This parameter can be:
+
+        - None, in which case all the jobs are immediately created and spawned. Use
+          this for lightweight and fast-running jobs, to avoid delays due to on-demand
+          spawning of the jobs
+        - An int, giving the exact number of total jobs that are spawned
+        - A str, giving an expression as a function of n_jobs, as in '2*n_jobs'
+
+    pre_dispatch : int, or str, default="2*n_jobs"
+        Controls the number of jobs that get dispatched during parallel
+        execution. Reducing this number can be useful to avoid an explosion of
+        memory consumption when more jobs get dispatched than CPUs can process.
+        This parameter can be:
+
+        - None, in which case all the jobs are immediately created and spawned. Use
+          this for lightweight and fast-running jobs, to avoid delays due to on-demand
+          spawning of the jobs
+        - An int, giving the exact number of total jobs that are spawned
+        - A str, giving an expression as a function of n_jobs, as in '2*n_jobs'
+
+    error_score : 'raise' or numeric, default=np.nan
+        Value to assign to the score if an error occurs in estimator fitting.
+        If set to 'raise', the error is raised. If a numeric value is given,
+        FitFailedWarning is raised. This parameter does not affect the refit
+        step, which will always raise the error.
+
+    return_train_score : bool, default=False
+        If ``False``, the ``cv_results_`` attribute will not include training
+        scores. Computing training scores is used to get insights on how
+        different parameter settings impact the overfitting/underfitting
+        trade-off. However computing the scores on the training set can be
+        computationally expensive and is not strictly required to select the
+        parameters that yield the best generalization performance.
+    """
 
     _parameter_constraints: dict = {
         **Sur_BaseSearchCV._parameter_constraints,
@@ -242,7 +350,6 @@ class Sur_GridSearchCV(Sur_BaseSearchCV):
         n_jobs=None,
         refit=True,
         cv=None,
-        verbose=0,
         pre_dispatch="2*n_jobs",
         error_score=np.nan,
         return_train_score=False,
@@ -258,7 +365,7 @@ class Sur_GridSearchCV(Sur_BaseSearchCV):
             n_jobs=n_jobs,
             refit=refit,
             cv=cv,
-            verbose=verbose,
+            verbose=0,
             pre_dispatch=pre_dispatch,
             error_score=error_score,
             return_train_score=return_train_score,
@@ -269,6 +376,95 @@ class Sur_GridSearchCV(Sur_BaseSearchCV):
 
 
 class Sur_RandomizedSearchCV(Sur_BaseSearchCV):
+    """
+    Survivalpredict's native randomized search on hyper parameters.
+
+    Not all parameter values are tried out, but rather a fixed number of
+    parameter settings is sampled from the specified distributions. The number
+    of parameter settings that are tried is given by n_iter. Like scikit-learn,
+    parallelism is achieved with joblib.
+
+    Parameters
+    ----------
+    estimator : estimator object
+        Survivalpredict native estimator.
+
+    param_distributions : dict | list
+        Dictionary with parameters names (str) as keys and distributions or
+        lists of parameters to try. Distributions must provide a rvs method for
+        sampling (such as those from scipy.stats.distributions). If a list is
+        given, it is sampled uniformly. If a list of dicts is given, first a
+        dict is sampled uniformly, and then a parameter is sampled using that
+        dict as above.
+
+    n_iter : int, default=10
+        Number of parameter settings that are sampled. n_iter trades off
+        runtime vs quality of the solution.
+
+    brier_score_max_time : Optional[int], default=None
+        Maximum time to evaluate survival curves for brier scores. If None,
+        will evaluate all times seen.
+
+    scoring : Optional[Literal["integrated_brier_score_administrative", "integrated_brier_score_ipcw"] | Callable], default=None
+        Strategy to evaluate the performance of the cross-validated model on
+        the test set.
+
+    n_jobs : int, default=None
+        Number of jobs to run in parallel. ``None`` means 1 unless in a
+        :obj:`joblib.parallel_backend` context. ``-1`` means using all
+        processors. See :term:`Glossary <n_jobs>` for more details.
+
+    refit : bool, str, or callable, default=True
+        Refit an estimator using the best found parameters on the whole
+        dataset.
+
+    cv : int, cross-validation generator or an iterable, default=None
+        Determines the cross-validation splitting strategy. Fully compatible
+        with scikit-learn CV components.
+
+        Controls the number of jobs that get dispatched during parallel
+        execution. Reducing this number can be useful to avoid an explosion of
+        memory consumption when more jobs get dispatched than CPUs can process.
+        This parameter can be:
+
+        - None, in which case all the jobs are immediately created and spawned. Use
+          this for lightweight and fast-running jobs, to avoid delays due to on-demand
+          spawning of the jobs
+        - An int, giving the exact number of total jobs that are spawned
+        - A str, giving an expression as a function of n_jobs, as in '2*n_jobs'
+
+    pre_dispatch : int, or str, default="2*n_jobs"
+        Controls the number of jobs that get dispatched during parallel
+        execution. Reducing this number can be useful to avoid an explosion of
+        memory consumption when more jobs get dispatched than CPUs can process.
+        This parameter can be:
+
+        - None, in which case all the jobs are immediately created and spawned. Use
+          this for lightweight and fast-running jobs, to avoid delays due to on-demand
+          spawning of the jobs
+        - An int, giving the exact number of total jobs that are spawned
+        - A str, giving an expression as a function of n_jobs, as in '2*n_jobs'
+
+    random_state : int, RandomState instance or None, default=None
+        Pseudo random number generator state used for random uniform sampling
+        from lists of possible values instead of scipy.stats distributions.
+        Pass an int for reproducible output across multiple function calls.
+
+    error_score : 'raise' or numeric, default=np.nan
+        Value to assign to the score if an error occurs in estimator fitting.
+        If set to 'raise', the error is raised. If a numeric value is given,
+        FitFailedWarning is raised. This parameter does not affect the refit
+        step, which will always raise the error.
+
+    return_train_score : bool, default=False
+        If ``False``, the ``cv_results_`` attribute will not include training
+        scores. Computing training scores is used to get insights on how
+        different parameter settings impact the overfitting/underfitting
+        trade-off. However computing the scores on the training set can be
+        computationally expensive and is not strictly required to select the
+        parameters that yield the best generalization performance.
+    """
+
     _parameter_constraints: dict = {
         **Sur_BaseSearchCV._parameter_constraints,
         "param_distributions": [dict, list],
@@ -292,7 +488,6 @@ class Sur_RandomizedSearchCV(Sur_BaseSearchCV):
         n_jobs=None,
         refit=True,
         cv=None,
-        verbose=0,
         pre_dispatch="2*n_jobs",
         random_state=None,
         error_score=np.nan,
@@ -310,7 +505,7 @@ class Sur_RandomizedSearchCV(Sur_BaseSearchCV):
             n_jobs=n_jobs,
             refit=refit,
             cv=cv,
-            verbose=verbose,
+            verbose=0,
             pre_dispatch=pre_dispatch,
             error_score=error_score,
             return_train_score=return_train_score,
