@@ -66,7 +66,7 @@ __all__ = [
     "ParametricDiscreteTimePH",
     "KaplanMeierSurvivalEstimator",
     "KNeighborsSurvival",
-    "CoxNNetPH",
+    "CoxNeuralNetPH",
     "AalenAdditiveHazard",
     "CoxElasticNetPH",
 ]
@@ -1410,7 +1410,7 @@ class KNeighborsSurvival(_SurvivalPredictBase):
             )
 
 
-class CoxNNetPH(_SurvivalPredictBase):
+class CoxNeuralNetPH(_SurvivalPredictBase):
     """
     Artificial neural network proportional hazards Model.
 

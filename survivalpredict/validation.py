@@ -48,8 +48,7 @@ def _sur_fit_and_score(
     return_n_test_samples: Optional[bool],
     method: Optional[Union[str, Callable]],
     strata: Optional[np.array] = None,
-    brier_score_max_time : Optional[int] = None,
-    brier_score_average_by_time: Optional[bool] = False,
+    brier_score_max_time: Optional[int] = None,
     error_score: numbers.Real | Literal["raise"] = "raise",
     times_start: Optional[np.ndarray[tuple[int], np.dtype[np.int64]]] = None,
 ):
@@ -142,7 +141,6 @@ def _sur_fit_and_score(
                 events_for_ipcw=events_train,
                 times_for_ipcw=times_train,
                 max_time=brier_score_max_time,
-                average_by_time=brier_score_average_by_time,
             )
             if return_train_score:
                 train_scores = _integrated_brier_score_ipcw(
@@ -150,7 +148,6 @@ def _sur_fit_and_score(
                     events=events_train,
                     times=times_train,
                     max_time=brier_score_max_time,
-                    average_by_time=brier_score_average_by_time,
                 )
 
         elif scorer == "integrated_brier_score_administrative":
@@ -159,7 +156,6 @@ def _sur_fit_and_score(
                 events_test,
                 times_test,
                 max_time=brier_score_max_time,
-                average_by_time=brier_score_average_by_time,
                 times_start=times_start_test,
             )
             if return_train_score:
@@ -168,7 +164,6 @@ def _sur_fit_and_score(
                     events=events_train,
                     times=times_train,
                     max_time=brier_score_max_time,
-                    average_by_time=brier_score_average_by_time,
                     times_start=times_start_train,
                 )
 
@@ -222,7 +217,7 @@ def sur_cross_validate(
     return_parameters: Optional[bool] = None,
     return_n_test_samples: Optional[bool] = None,
     method: Optional[bool] = None,
-    error_score=np.nan,
+    error_score: Literal["raise"] | np.number | float = np.nan,
     times_start: Optional[np.ndarray[tuple[int], np.dtype[np.int64]]] = None,
 ):
     """
@@ -317,11 +312,11 @@ def sur_cross_validate(
         Value to assign to the score if an error occurs in estimator fitting.
         If set to 'raise', the error is raised.
         If a numeric value is given, FitFailedWarning is raised.
-       
+
     times_start : array-like of shape (n_samples, dtype=np.int64), default=None
         Starting point for observation. If not passed in, all times_start
         times are assumed to be 0.
-    
+
     Returns
     -------
     dict of float arrays of shape (n_splits,)
@@ -383,7 +378,6 @@ def sur_cross_validate(
             return_n_test_samples=return_n_test_samples,
             method=method,
             brier_score_max_time=brier_score_max_time,
-            brier_score_average_by_time=False,
             error_score=error_score,
             strata=strata,
             times_start=times_start,
@@ -409,7 +403,7 @@ def sur_cross_val_score(
     verbose=0,
     params=None,
     pre_dispatch="2*n_jobs",
-    error_score=np.nan,
+    error_score: Literal["raise"] | np.number | float = np.nan,
     brier_score_max_time: Optional[int] = None,
     method: Optional[bool] = None,
     strata: Optional[np.array] = None,
@@ -495,7 +489,7 @@ def sur_cross_val_score(
     times_start : array-like of shape (n_samples, dtype=np.int64), default=None
         Starting point for observation. If not passed in, all times_start
         times are assumed to be 0.
-    
+
     Returns
     -------
     ndarray of float of shape=(len(list(cv)),)
@@ -516,7 +510,6 @@ def sur_cross_val_score(
         pre_dispatch=pre_dispatch,
         error_score=error_score,
         brier_score_max_time=brier_score_max_time,
-        brier_score_average_by_time=False,
         method=method,
         strata=strata,
         times_start=times_start,

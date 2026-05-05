@@ -6,15 +6,15 @@ from ..estimators import (
     ParametricDiscreteTimePH,
     CoxElasticNetPH,
     CoxProportionalHazard,
-    CoxNNetPH,
+    CoxNeuralNetPH,
     KaplanMeierSurvivalEstimator,
 )
 from ..metrics import brier_scores_administrative, integrated_brier_score_administrative
 from ..validation import sur_cross_val_score
 
-times_start = np.array([0, 1, 2, 3, 0, 1, 2, 3])
-times = np.array([1, 2, 3, 4, 1, 2, 3, 4])
-events = np.array([False, False, False, True, False, False, True, True])
+times_start = np.repeat(np.array([0, 1, 2, 3, 0, 1, 2, 3]), 3)
+times = np.repeat(np.array([1, 2, 3, 4, 1, 2, 3, 10]), 3)
+events = np.repeat(np.array([True, False, True, True, False, False, True, True]), 3)
 X = np.array(
     [
         [0, 0, 1, 0],
@@ -27,6 +27,7 @@ X = np.array(
         [3, 1, 1, 1],
     ]
 )
+X = np.concatenate([X] * 3)
 
 
 @pytest.mark.parametrize(
@@ -36,7 +37,7 @@ X = np.array(
         ParametricDiscreteTimePH,
         CoxElasticNetPH,
         CoxProportionalHazard,
-        CoxNNetPH,
+        CoxNeuralNetPH,
         KaplanMeierSurvivalEstimator,
     ],
 )

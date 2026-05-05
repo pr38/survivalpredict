@@ -49,7 +49,6 @@ def _brier_scores_ipcw(
 
     unique_times = np.arange(1, max_time + 1)
 
-
     kaplan_meier_survival_curve_inverted_event = get_kaplan_meier_survival_curve(
         np.logical_not(events_for_ipcw), times_for_ipcw, max_time
     )
@@ -85,7 +84,7 @@ def _brier_scores_ipcw(
 
 
 def brier_scores_ipcw(
-    predictions: np.ndarray[tuple[int,int],np.dtype[np.float64]],
+    predictions: np.ndarray[tuple[int, int], np.dtype[np.float64]],
     times: np.ndarray,
     events: np.ndarray,
     events_for_ipcw: Optional[np.ndarray] = None,
@@ -162,12 +161,11 @@ def brier_scores_ipcw(
 
 
 def _integrated_brier_score_ipcw(
-    predictions: np.ndarray[tuple[int,int],np.dtype[np.float64]],
+    predictions: np.ndarray[tuple[int, int], np.dtype[np.float64]],
     events: np.ndarray,
     times: np.ndarray,
     events_for_ipcw: Optional[np.ndarray] = None,
     times_for_ipcw: Optional[np.ndarray] = None,
-    average_by_time: Optional[bool] = False,
     max_time: Optional[int] = None,
 ):
 
@@ -189,11 +187,7 @@ def _integrated_brier_score_ipcw(
         max_time=max_time,
     )
 
-    if average_by_time:
-        integrated_brier_score = np.trapezoid(bs, unique_times) / unique_times[-1]
-
-    else:
-        integrated_brier_score = np.trapezoid(bs, unique_times)
+    integrated_brier_score = np.trapezoid(bs, unique_times)
 
     return integrated_brier_score
 
@@ -204,7 +198,6 @@ def integrated_brier_score_ipcw(
     events: np.ndarray,
     events_for_ipcw: Optional[np.ndarray] = None,
     times_for_ipcw: Optional[np.ndarray] = None,
-    average_by_time: Optional[bool] = False,
     max_time: Optional[int] = None,
 ) -> np.ndarray:
     """
@@ -245,12 +238,6 @@ def integrated_brier_score_ipcw(
         Times to build inverse probability of censoring weights on, it is
         acceptable to put in training times here. If None, will use Times.
 
-    average_by_time : Optional[bool], default=False
-        If True, all scores are divided by the score of max time before getting
-        the integral . If True, the integral stops being a metric to compare
-        the performance of different models. This parameter exists to allow
-        parroting with other packages.
-
     max_time : Optional[int], default=None
         Maximum time to evaluate survival curves. If None, will evaluate all
         times seen.
@@ -266,7 +253,7 @@ def integrated_brier_score_ipcw(
     comparison of prognostic classification schemes for survival data,”
     Statistics in Medicine, vol. 18, no. 17-18, pp. 2529–2545, 1999.
     """
-    
+
     times = _as_int_np_array(times)
     events = _as_bool_np_array(events)
     predictions = _as_numeric_np_array(predictions)
@@ -280,16 +267,12 @@ def integrated_brier_score_ipcw(
     if max_time is not None:
         max_time = _as_int(max_time, "max_time")
 
-    if average_by_time is not None:
-        average_by_time = _as_int(average_by_time, "max_time")
-
     return _integrated_brier_score_ipcw(
         predictions,
         events,
         times,
         events_for_ipcw,
         times_for_ipcw,
-        average_by_time,
         max_time,
     )
 
@@ -436,7 +419,6 @@ def _integrated_brier_score_administrative(
     events: np.ndarray,
     times: np.ndarray,
     max_time: Optional[int] = None,
-    average_by_time: Optional[bool] = False,
     times_start: Optional[np.ndarray] = None,
 ):
 
@@ -449,11 +431,7 @@ def _integrated_brier_score_administrative(
         predictions, events, times, max_time=max_time, times_start=times_start
     )
 
-    if average_by_time:
-        integrated_brier_score = np.trapezoid(bs, unique_times) / unique_times[-1]
-
-    else:
-        integrated_brier_score = np.trapezoid(bs, unique_times)
+    integrated_brier_score = np.trapezoid(bs, unique_times)
 
     return integrated_brier_score
 
@@ -463,7 +441,6 @@ def integrated_brier_score_administrative(
     times: np.ndarray,
     events: np.ndarray,
     max_time: Optional[int] = None,
-    average_by_time: Optional[bool] = False,
     times_start: Optional[np.ndarray] = None,
 ):
     """
@@ -499,12 +476,6 @@ def integrated_brier_score_administrative(
         Maximum time to evaluate survival curves. If None, will evaluate all
         times seen.
 
-    average_by_time : Optional[bool], default=False
-        If True, all scores are divided by the score of max time before getting
-        the integral . If True, the integral stops being a metric to compare
-        the performance of different models. This parameter exists to allow
-        parroting with other packages.
-
     times_start : Optional[np.ndarray], default=None
         Starting point for observation. If not passed in, all times_start times
         are assumed to be 0.
@@ -528,15 +499,11 @@ def integrated_brier_score_administrative(
     if max_time is not None:
         max_time = _as_int(max_time, "max_time")
 
-    if average_by_time is not None:
-        average_by_time = _as_int(average_by_time, "average_by_time")
-
     return _integrated_brier_score_administrative(
         predictions,
         events,
         times,
         max_time,
-        average_by_time,
         times_start=times_start,
     )
 

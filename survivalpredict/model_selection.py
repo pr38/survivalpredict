@@ -130,7 +130,7 @@ class Sur_BaseSearchCV(MetaEstimatorMixin, BaseEstimator, metaclass=ABCMeta):
         self.best_params_ = results[self.best_index_]["params"]
         self.best_score_ = mean_test_scores[self.best_index_]
 
-    def _refit_best_estimator(self, X, times, events, fit_params, strata=None):
+    def _refit_best_estimator(self, X, times, events, **fit_params):
 
         self.best_estimator_ = clone(self.estimator).set_params(
             **clone(self.best_params_, safe=False)
@@ -138,10 +138,9 @@ class Sur_BaseSearchCV(MetaEstimatorMixin, BaseEstimator, metaclass=ABCMeta):
 
         refit_start_time = time.time()
 
-        if strata is not None:
-            self.best_estimator_.fit(X, times, events, strata=strata, **fit_params)
-        else:
-            self.best_estimator_.fit(X, times, events, **fit_params)
+        fit_params = fit_params.copy()
+
+        self.best_estimator_.fit(X, times, events, **fit_params)
 
         refit_end_time = time.time()
         self.refit_time_ = refit_end_time - refit_start_time
@@ -177,7 +176,8 @@ class Sur_BaseSearchCV(MetaEstimatorMixin, BaseEstimator, metaclass=ABCMeta):
 
         X, times, events = validate_survival_data(X, times, events)
 
-        times_start = validate_times_start_array(times_start, times)
+        if times_start is not None:
+            times_start = validate_times_start_array(times_start, times)
 
         if strata is not None:
             self._uses_strata = True
@@ -244,7 +244,9 @@ class Sur_BaseSearchCV(MetaEstimatorMixin, BaseEstimator, metaclass=ABCMeta):
 
         self._process_results(results, n_candidates, n_splits)
 
-        self._refit_best_estimator(X, times, events, times_start=times_start, strata=strata)
+        self._refit_best_estimator(
+            X, times, events, times_start=times_start, strata=strata
+        )
 
         return self
 

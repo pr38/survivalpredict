@@ -9,7 +9,7 @@ estimators
     ParametricDiscreteTimePH
     KaplanMeierSurvivalEstimator
     KNeighborsSurvival
-    CoxNNetPH
+    CoxNeuralNetPH
     AalenAdditiveHazard
     CoxElasticNetPH
 
@@ -42,7 +42,7 @@ estimators
 
 
 
-.. autoclass:: survivalpredict.estimators.CoxNNetPH
+.. autoclass:: survivalpredict.estimators.CoxNeuralNetPH
    :members:
    :inherited-members:
    :exclude-members: get_metadata_routing, set_fit_request, set_predict_request, set_params, set_fit_request
