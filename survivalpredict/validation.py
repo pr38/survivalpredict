@@ -48,7 +48,7 @@ def _sur_fit_and_score(
     return_n_test_samples: Optional[bool],
     method: Optional[Union[str, Callable]],
     strata: Optional[np.array] = None,
-    brier_score_max_time: Optional[int] = None,
+    brier_score_max_time : Optional[int] = None,
     brier_score_average_by_time: Optional[bool] = False,
     error_score: numbers.Real | Literal["raise"] = "raise",
     times_start: Optional[np.ndarray[tuple[int], np.dtype[np.int64]]] = None,
@@ -219,13 +219,114 @@ def sur_cross_validate(
     return_train_score: Optional[bool] = False,
     return_estimator: Optional[bool] = False,
     brier_score_max_time: Optional[int] = None,
-    brier_score_average_by_time: Optional[bool] = True,
     return_parameters: Optional[bool] = None,
     return_n_test_samples: Optional[bool] = None,
     method: Optional[bool] = None,
     error_score=np.nan,
     times_start: Optional[np.ndarray[tuple[int], np.dtype[np.int64]]] = None,
 ):
+    """
+    Evaluate survival metrics by cross-validation and also record fit/score times.
+
+    Parameters
+    ----------
+    estimator : survivalpredict estimator
+        Instance of a survivalpredict compatible estimator.
+
+    X : array-like of shape (n_samples, n_features)
+        Training data.
+
+    times : array-like of shape (n_samples), dtype=np.int64
+        Point in time last observed.
+
+    events : array-like of shape (n_samples), dtype=np.bool_
+        Experianed event.
+
+    strata : array-like of shape (n_samples,), dtype=np.int64, default=None
+        If passed in, associated strata for per observation.
+
+    groups : array-like of shape (n_samples,), default=None
+        Group labels for the samples used while splitting the dataset into train/test set.
+        Only used in conjunction with a “Group” cv instance (e.g., GroupKFold).
+
+    scoring : {"integrated_brier_score_administrative", "integrated_brier_score_ipcw"} , default="integrated_brier_score_administrative"
+        survival metrics
+
+    cv : int, cross-validation generator or an iterable, default=None
+        Determines the cross-validation splitting strategy.
+        Possible inputs for cv are:
+
+        - None, to use the default 5-fold cross validation,
+        - int, to specify the number of folds in a `(Stratified)KFold`,
+        - :term:`CV splitter`,
+        - An iterable yielding (train, test) splits as arrays of indices.
+
+        For int/None inputs, if the estimator is a classifier and ``y`` is
+        either binary or multiclass, :class:`StratifiedKFold` is used. In all
+        other cases, :class:`KFold` is used. These splitters are instantiated
+        with `shuffle=False` so the splits will be the same across calls.
+
+    n_jobs : int, default=None
+        Number of jobs to run in parallel. Training the estimator and computing
+        the score are parallelized over the cross-validation splits.
+        ``None`` means 1 unless in a :obj:`joblib.parallel_backend` context.
+        ``-1`` means using all processors. See :term:`Glossary <n_jobs>`
+        for more details.
+
+    verbose : int, default=0
+        The verbosity level.
+
+    params : dict, default=None
+        Parameters to pass to the underlying estimator's ``fit``, the scorer,
+        and the CV splitter.
+
+    pre_dispatch : int or str, default='2*n_jobs'
+        Controls the number of jobs that get dispatched during parallel
+        execution. Reducing this number can be useful to avoid an
+        explosion of memory consumption when more jobs get dispatched
+        than CPUs can process. This parameter can be:
+
+        - An int, giving the exact number of total jobs that are spawned
+        - A str, giving an expression as a function of n_jobs, as in '2*n_jobs'
+
+    return_train_score : bool, default=False
+        Whether to include train scores.
+        Computing training scores is used to get insights on how different
+        parameter settings impact the overfitting/underfitting trade-off.
+        However computing the scores on the training set can be computationally
+        expensive and is not strictly required to select the parameters that
+        yield the best generalization performance.
+
+    return_estimator : bool, default=False
+        Whether to return the estimators fitted on each split.
+
+    brier_score_max_time : int, default=None
+        Maximum time to evaluate survival curves. If None, will evaluate all
+        times seen.
+
+    return_parameters : bool, default=False
+        Return parameters that has been used for the estimator.
+
+    return_n_test_samples : bool, default=False
+        Whether to return the ``n_test_samples``.
+
+    method : str, default='predict'
+       Method used to predict for estimator.
+
+    error_score : 'raise' or numeric, default=np.nan
+        Value to assign to the score if an error occurs in estimator fitting.
+        If set to 'raise', the error is raised.
+        If a numeric value is given, FitFailedWarning is raised.
+       
+    times_start : array-like of shape (n_samples, dtype=np.int64), default=None
+        Starting point for observation. If not passed in, all times_start
+        times are assumed to be 0.
+    
+    Returns
+    -------
+    dict of float arrays of shape (n_splits,)
+        Array of scores of the estimator for each run of the cross validation.
+    """
     if return_train_score is None:
         return_train_score = False
     elif not isinstance(return_train_score, bool):
@@ -282,7 +383,7 @@ def sur_cross_validate(
             return_n_test_samples=return_n_test_samples,
             method=method,
             brier_score_max_time=brier_score_max_time,
-            brier_score_average_by_time=brier_score_average_by_time,
+            brier_score_average_by_time=False,
             error_score=error_score,
             strata=strata,
             times_start=times_start,
@@ -310,10 +411,96 @@ def sur_cross_val_score(
     pre_dispatch="2*n_jobs",
     error_score=np.nan,
     brier_score_max_time: Optional[int] = None,
-    brier_score_average_by_time: Optional[bool] = True,
+    method: Optional[bool] = None,
     strata: Optional[np.array] = None,
     times_start: Optional[np.ndarray[tuple[int], np.dtype[np.int64]]] = None,
 ):
+    """
+    Evaluate survival score by cross-validation.
+
+    Parameters
+    ----------
+
+    estimator : survivalpredict estimator
+        Instance of a survivalpredict compatible estimator.
+
+    X : array-like of shape (n_samples, n_features)
+        Training data.
+
+    times : array-like of shape (n_samples), dtype=np.int64
+        Point in time last observed.
+
+    events : array-like of shape (n_samples), dtype=np.bool_
+        Experianed event.
+
+    groups : array-like of shape (n_samples,), default=None
+        Group labels for the samples used while splitting the dataset into train/test set.
+        Only used in conjunction with a “Group” cv instance (e.g., GroupKFold).
+
+    scoring : {"integrated_brier_score_administrative", "integrated_brier_score_ipcw"} , default="integrated_brier_score_administrative"
+        survival metrics
+
+    cv : int, cross-validation generator or an iterable, default=None
+        Determines the cross-validation splitting strategy.
+        Possible inputs for cv are:
+
+        - None, to use the default 5-fold cross validation,
+        - int, to specify the number of folds in a `(Stratified)KFold`,
+        - :term:`CV splitter`,
+        - An iterable yielding (train, test) splits as arrays of indices.
+
+        For int/None inputs, if the estimator is a classifier and ``y`` is
+        either binary or multiclass, :class:`StratifiedKFold` is used. In all
+        other cases, :class:`KFold` is used. These splitters are instantiated
+        with `shuffle=False` so the splits will be the same across calls.
+
+    n_jobs : int, default=None
+        Number of jobs to run in parallel. Training the estimator and computing
+        the score are parallelized over the cross-validation splits.
+        ``None`` means 1 unless in a :obj:`joblib.parallel_backend` context.
+        ``-1`` means using all processors. See :term:`Glossary <n_jobs>`
+        for more details.
+
+    verbose : int, default=0
+        The verbosity level.
+
+    params : dict, default=None
+        Parameters to pass to the underlying estimator's ``fit``, the scorer,
+        and the CV splitter.
+
+    pre_dispatch : int or str, default='2*n_jobs'
+        Controls the number of jobs that get dispatched during parallel
+        execution. Reducing this number can be useful to avoid an
+        explosion of memory consumption when more jobs get dispatched
+        than CPUs can process. This parameter can be:
+
+        - An int, giving the exact number of total jobs that are spawned
+        - A str, giving an expression as a function of n_jobs, as in '2*n_jobs'
+
+    error_score : 'raise' or numeric, default=np.nan
+        Value to assign to the score if an error occurs in estimator fitting.
+        If set to 'raise', the error is raised.
+        If a numeric value is given, FitFailedWarning is raised.
+
+    brier_score_max_time : int, default=None
+        Maximum time to evaluate survival curves. If None, will evaluate all
+        times seen.
+
+    method : str, default='predict'
+       Method used to predict for estimator.
+
+    strata : array-like of shape (n_samples,), dtype=np.int64, default=None
+        If passed in, associated strata for per observation.
+
+    times_start : array-like of shape (n_samples, dtype=np.int64), default=None
+        Starting point for observation. If not passed in, all times_start
+        times are assumed to be 0.
+    
+    Returns
+    -------
+    ndarray of float of shape=(len(list(cv)),)
+        Array of scores of the estimator for each run of the cross validation.
+    """
 
     cv_result = sur_cross_validate(
         estimator,
@@ -329,7 +516,8 @@ def sur_cross_val_score(
         pre_dispatch=pre_dispatch,
         error_score=error_score,
         brier_score_max_time=brier_score_max_time,
-        brier_score_average_by_time=brier_score_average_by_time,
+        brier_score_average_by_time=False,
+        method=method,
         strata=strata,
         times_start=times_start,
     )
