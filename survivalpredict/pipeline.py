@@ -41,6 +41,35 @@ def build_sklearn_pipeline_target(
     strata: Optional[np.ndarray[tuple[int], np.dtype[np.integer]]] = None,
     times_start: Optional[np.ndarray[tuple[int], np.dtype[np.integer]]] = None,
 ):
+    """
+    Target builder for survivalpredict's ‘SklearnSurvivalPipeline’.
+
+    Takes ‘times’, ‘events’ arrays, and optionally ‘strata’ and ‘times_start’
+    inputs; and builds a singular numpy array that can function as the
+    ‘y’/observed for ‘SklearnSurvivalPipeline’ and scikit-learn's api.
+
+    Parameters
+    ----------
+    times : array-like of shape (n_samples), dtype=np.int64
+        Point in time last observed.
+
+    events : array-like of shape (n_samples), dtype=np.bool_
+        Experianed event.
+
+    strata : array-like of shape (n_samples,), dtype=np.int64, default=None
+        If passed in, associated strata for per observation.
+
+    times_start : array-like of shape (n_samples, dtype=np.int64), default=None
+        Starting point for observation. If not passed in, all times_start
+        times are assumed to be 0.
+
+    Returns
+    -------
+    ndarray
+        Returns a numpy array that survivalpredict knows how to unpack, while
+        allowing said numpy array to flow through the various machinery of
+        scikit-learn.
+    """
     times = validate_times_array(times)
     events = _as_bool_np_array(events)
 
@@ -85,6 +114,39 @@ def _fit_transform_sp_strata_column_transformer(
 
 
 class SklearnSurvivalPipeline(_BaseComposition):
+    """
+    Scikit-learn compatible pipeline class for survivalpredict.
+
+    A sequence of data transformers and strata preprocessing with a final
+    predictor. Takes a feature matrix/X as well as the output
+    ‘build_sklearn_pipeline_target’ as the ‘y’. Combined survivalpredict’s
+    ‘sklearn_scorer’s, it allows users to build pipelines that can interface
+    with the rest of Scikit-learn’s api. Parameters of the various steps using
+    their names and the parameter name separated by a '__', allowing for
+    parameters of various steps to be tuned during cross-validation searches.
+
+    Parameters
+    ----------
+    steps : list[tuple[str, BaseEstimator]]
+        List of the tuples with names and class instances that are chained
+        together. The class instances are assumped to be scikit-learn
+        transformers/survivalpredict StrataBuilders/StrataColumnTransformers.
+        The final instance is assumed to be a survivalpredict estimator
+        predictor.
+
+    max_time : int
+        Maximum time for building survival curves.
+
+    memory : str or object with the joblib.Memory interface, default=None
+        Used to cache the fitted transformers of the pipeline. The last step
+        will never be cached, even if it is a transformer. By default, no
+        caching is performed. If a string is given, it is the path to the
+        caching directory. Enabling caching triggers a clone of the
+        transformers before fitting. Therefore, the transformer instance given
+        to the pipeline cannot be inspected directly. Use the attribute
+        named_steps or steps to inspect estimators within the pipeline. Caching
+        the transformers is advantageous when fitting is time consuming.
+    """
     _parameter_constraints: dict = {
         "steps": [list, Hidden(tuple)],
         "max_time": [Interval(Integral, 1, None, closed="left")],
@@ -112,6 +174,7 @@ class SklearnSurvivalPipeline(_BaseComposition):
 
     @property
     def _final_estimator(self):
+
         return self.steps[-1][1]
 
     def _run_transformers(self, X, strata):
@@ -166,6 +229,22 @@ class SklearnSurvivalPipeline(_BaseComposition):
 
     @_fit_context(prefer_skip_nested_validation=True)
     def fit(self, X, y):
+        """
+        Fit the model.
+
+        Parameters
+        ----------
+        X : ndarray of shape (n_samples, n_features)
+            Training data.
+        y : ndarray of shape
+            Target values. Assumes that output of ‘build_sklearn_pipeline_target’.
+
+        Returns
+        -------
+        object
+            Returns the instance itself.
+        """
+
         times, events, strata, times_start = _unpack_sklearn_pipeline_target(y)
 
         self._fit(X, times, events, strata, times_start)
@@ -175,6 +254,25 @@ class SklearnSurvivalPipeline(_BaseComposition):
         return self
 
     def predict(self, X, strata=None):
+        """
+        Predict using the pipeline.
+
+        Parameters
+        ----------
+        X : ndarray of shape (n_samples, n_features)
+            Samples.
+
+        strata : array-like of shape (n_samples,), dtype=np.int64, default=None
+            If y from training/fit had prebuilt strata; strata can be passed into fit.
+
+        Returns
+        -------
+        ndarray of shape (n_samples, max_time), dtype=np.float64
+            The estimated survival curves, the left-most column is the
+            probability of survival at time 1, and the right-most column ends
+            at max_time.
+        """
+
         check_is_fitted(self)
 
         if self._uses_strata_in_input and strata is None:
@@ -264,6 +362,34 @@ class SklearnSurvivalPipeline(_BaseComposition):
 def make_sklearn_survival_pipeline(
     *steps_no_names: BaseEstimator, max_time: int, memory=None
 ):
+    """
+    Construct a SklearnSurvivalPipeline from given steps.
+
+    This is a shorthand for the SklearnSurvivalPipeline constructor; it does
+    not require, and does not permit, naming the steps. Instead, their names
+    will be set to the lowercase of their types automatically.
+
+    Parameters
+    ----------
+    *steps_no_names : list of Estimator objects 
+        List of class instances that are chained together. The class instances 
+        are assumped to be scikit-learn transformers/survivalpredict 
+        StrataBuilders/StrataColumnTransformers. The final instance is assumed to be 
+        a survivalpredict estimator predictor.
+
+    max_time : int
+        Maximum time for building survival curves.
+
+    memory : str or object with the joblib.Memory interface, default=None Used
+        Used to cache the fitted transformers of the pipeline. The last step will never
+        be cached, even if it is a transformer. By default, no caching is
+        performed. If a string is given, it is the path to the caching directory.
+        Enabling caching triggers a clone of the transformers before fitting.
+        Therefore, the transformer instance given to the pipeline cannot be
+        inspected directly. Use the attribute named_steps or steps to inspect
+        estimators within the pipeline. Caching the transformers is advantageous
+        when fitting is time consuming.
+    """
     max_time = _as_int(max_time, "max_time")
 
     names = _get_estimator_names(steps_no_names)

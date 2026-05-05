@@ -525,11 +525,11 @@ class StrataColumnTransformer(
     StrataBuilders instead of scikit-learn's Transformers. Different columns or column subsets
     of the input are separately run through different StrataBuilders. If there are pre-existing strata,
     it will be added to the created strata. After the strata are built, columns used for building said strata are
-    then removed from the feature set. Works on Numpy arrays as well as  Pandas/Polars dataframes.
+    then removed from the feature set. Works on Numpy arrays as well as Pandas/Polars dataframes.
 
     Designed to be used with 'survivalpredict.pipeline.SklearnSurvivalPipeline'.
     The columns in strata_transformers tuples are exposed as parameters that can be tuned.
-    This is useful in model selection, where different strata are tried. Said prams are named as such '{name}_columns'.
+    This is useful in model selection, where different strata are tried. Said prams are named as '{name}_columns'.
 
     Parameters
     ----------
