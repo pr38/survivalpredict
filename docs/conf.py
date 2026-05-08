@@ -36,7 +36,7 @@ exclude_patterns = ['_build', 'Thumbs.db', '.DS_Store']
 collections = {
     'notebooks': {
       'driver': 'copy_folder',
-      'source': 'notebooks/'
+      'source': '../notebooks/'
    }
 }
 
