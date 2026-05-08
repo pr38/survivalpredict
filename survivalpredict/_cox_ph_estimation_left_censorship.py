@@ -8,6 +8,7 @@ from ._cox_ph_estimation import (
     get_second_half_of_efron_hessian,
 )
 
+#to do: remove l1 from coxph.
 
 @nb.njit(cache=True)
 def at_risk_per_time_with_start_times(

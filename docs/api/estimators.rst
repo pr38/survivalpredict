@@ -5,13 +5,13 @@ estimators
 .. autosummary::
    :nosignatures:
 
-    CoxProportionalHazard
-    ParametricDiscreteTimePH
-    KaplanMeierSurvivalEstimator
-    KNeighborsSurvival
-    CoxNeuralNetPH
-    AalenAdditiveHazard
-    CoxElasticNetPH
+   CoxProportionalHazard
+   ParametricDiscreteTimePH
+   KaplanMeierSurvivalEstimator
+   KNeighborsSurvival
+   CoxNeuralNetPH
+   AalenAdditiveHazard
+   CoxPHElasticNet
 
 
 .. autoclass:: survivalpredict.estimators.CoxProportionalHazard
@@ -55,7 +55,7 @@ estimators
    :exclude-members: get_metadata_routing, set_fit_request, set_predict_request, set_params, set_fit_request, get_params
 
 
-.. autoclass:: survivalpredict.estimators.CoxElasticNetPH
+.. autoclass:: survivalpredict.estimators.CoxPHElasticNet
    :members:
    :inherited-members:
    :exclude-members: get_metadata_routing, set_fit_request, set_predict_request, set_params, set_fit_request, get_params

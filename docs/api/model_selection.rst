@@ -6,8 +6,8 @@ model selection
 .. autosummary::
    :nosignatures:
 
-    Sur_GridSearchCV
-    Sur_RandomizedSearchCV
+   Sur_GridSearchCV
+   Sur_RandomizedSearchCV
 
 
 .. autoclass:: survivalpredict.model_selection.Sur_GridSearchCV

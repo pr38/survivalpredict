@@ -68,7 +68,7 @@ __all__ = [
     "KNeighborsSurvival",
     "CoxNeuralNetPH",
     "AalenAdditiveHazard",
-    "CoxElasticNetPH",
+    "CoxPHElasticNet",
 ]
 
 
@@ -107,13 +107,7 @@ class CoxProportionalHazard(_SurvivalPredictBase):
     ----------
     alpha : float, default=0.0
         Constant that multiplies the penalty terms. Used to penalize
-        coefficients durring training.
-
-    l1_ratio : float, default=0.5
-        The ElasticNet mixing parameter, with ``0 <= l1_ratio <= 1``. For
-        ``l1_ratio = 0`` the penalty is an L2 penalty. ``For l1_ratio = 1`` it
-        is an L1 penalty.  For ``0 < l1_ratio < 1``, the penalty is a
-        combination of L1 and L2.
+        coefficients durring training. Used for L2 penalty.
 
     max_iter : Optional[int], default=100
         The maximum number of iterations.
@@ -125,7 +119,7 @@ class CoxProportionalHazard(_SurvivalPredictBase):
         concurrent failures muddies the interpretability of Cox’s
         coefficients.‘Breslow ties’ ignore said issue and perform best on
         predictions. ‘Efron ties’ shaves some of the influence of some tied
-        data on the likelihood in hopes of solving said problem, at the price
+        data on the likelihood, in hopes of solving said problem and at the price
         of prediction performance. Use Breslow if prediction performance is
         your primary concern, and use Efron in cases of inference.
 
@@ -153,7 +147,6 @@ class CoxProportionalHazard(_SurvivalPredictBase):
 
     _parameter_constraints: dict = {
         "alpha": [Interval(Real, 0, None, closed="left")],
-        "l1_ratio": [Interval(Real, 0, 1, closed="both")],
         "max_iter": [Interval(Integral, 1, None, closed="left"), None],
         "ties": [StrOptions({"breslow", "efron"})],
         "tol": [Interval(Real, 0, None, closed="left")],
@@ -163,13 +156,11 @@ class CoxProportionalHazard(_SurvivalPredictBase):
         self,
         *,
         alpha: float = 0.0,
-        l1_ratio: float = 0.5,
         max_iter: Optional[int] = 100,
         ties: Optional[Literal["breslow", "efron"]] = "breslow",
         tol: float = 1e-9,
     ):
         self.alpha = alpha
-        self.l1_ratio = l1_ratio
         self.max_iter = max_iter
         self.ties = ties
         self.tol = tol
@@ -272,7 +263,7 @@ class CoxProportionalHazard(_SurvivalPredictBase):
                     time_return_inverse_strata,
                     time_start_return_inverse_strata,
                     self.alpha,
-                    self.l1_ratio,
+                    0,
                     coefs,
                     self.max_iter,
                     self.tol,
@@ -288,7 +279,7 @@ class CoxProportionalHazard(_SurvivalPredictBase):
                     time_start_return_inverse_strata,
                     n_strata,
                     self.alpha,
-                    self.l1_ratio,
+                    0,
                     coefs,
                     self.max_iter,
                     self.tol,
@@ -321,7 +312,7 @@ class CoxProportionalHazard(_SurvivalPredictBase):
                     time_return_inverse_strata,
                     n_strata,
                     self.alpha,
-                    self.l1_ratio,
+                    0,
                     coefs,
                     self.max_iter,
                     self.tol,
@@ -343,7 +334,7 @@ class CoxProportionalHazard(_SurvivalPredictBase):
                     l_div_m_stata,
                     time_return_inverse_strata,
                     self.alpha,
-                    self.l1_ratio,
+                    0,
                     coefs,
                     self.max_iter,
                     self.tol,
@@ -1236,7 +1227,7 @@ class KNeighborsSurvival(_SurvivalPredictBase):
         values.
 
         If metric is "precomputed", X is assumed to be a distance matrix and
-        must be square during fit. X may be a :term:`sparse graph`, in which
+        must be square during fit. X may be a `sparse graph`, in which
         case only "nonzero" elements may be considered neighbors.
 
         If metric is a callable function, it takes two arrays representing 1D
@@ -1249,10 +1240,9 @@ class KNeighborsSurvival(_SurvivalPredictBase):
 
     n_jobs : int, default=None
         The number of parallel jobs to run for neighbors search.
-        ``None`` means 1 unless in a :obj:`joblib.parallel_backend` context.
-        ``-1`` means using all processors. See :term:`Glossary <n_jobs>`
-        for more details.
-        Doesn't affect :meth:`fit` method.
+        ``None`` means 1 unless in a `joblib.parallel_backend` context.
+        ``-1`` means using all processors.
+        Doesn't affect `fit` method.
     """
 
     _parameter_constraints: dict = {
@@ -1928,7 +1918,7 @@ class AalenAdditiveHazard(_SurvivalPredictBase):
         return np.exp(-hazards.cumsum(axis=1))
 
 
-class CoxElasticNetPH(_SurvivalPredictBase):
+class CoxPHElasticNet(_SurvivalPredictBase):
     """
     Cox Proportional Hazards with Elastic Net penalty and feature shrinkage.
 

@@ -6,12 +6,21 @@
 survivalpredict documentation
 =============================
 
+.. toctree::
+   :maxdepth: 1
+   :caption: Walkthroughs:
+
+   General walkthrough<_collections/notebooks/survivalpredict_walkthrough_demo.ipynb>
+
+   Interfacing with Sklearn<_collections/notebooks/demo_sklearn_interface.ipynb>
+
+
 
 .. toctree::
    :maxdepth: 3
-   :caption: Contents:
+   :caption: Docs:
 
-   api/index
+   API <api/index>
 
    
 

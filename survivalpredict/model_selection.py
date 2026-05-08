@@ -1,6 +1,6 @@
 import numbers
 import time
-from abc import ABCMeta, abstractmethod
+from abc import ABCMeta
 from itertools import product
 from typing import Any, Callable, Literal, Optional
 
@@ -130,15 +130,21 @@ class Sur_BaseSearchCV(MetaEstimatorMixin, BaseEstimator, metaclass=ABCMeta):
         self.best_params_ = results[self.best_index_]["params"]
         self.best_score_ = mean_test_scores[self.best_index_]
 
-    def _refit_best_estimator(self, X, times, events, **fit_params):
+    def _refit_best_estimator(self, X, times, events, times_start=None, strata=None):
 
         self.best_estimator_ = clone(self.estimator).set_params(
             **clone(self.best_params_, safe=False)
         )
 
-        refit_start_time = time.time()
+        fit_params = {}
 
-        fit_params = fit_params.copy()
+        if times_start is not None:
+            fit_params["times_start"] = times_start
+
+        if strata is not None:
+            fit_params["strata"] = strata
+
+        refit_start_time = time.time()
 
         self.best_estimator_.fit(X, times, events, **fit_params)
 

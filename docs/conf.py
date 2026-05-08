@@ -26,11 +26,21 @@ extensions = [
     'sphinx.ext.autosummary',
     'sphinx.ext.napoleon',
     'sphinx_design',
-    'numpydoc' ]
+    'numpydoc',
+    'sphinx_collections',
+    'myst_nb']
 
 templates_path = ['_templates']
 exclude_patterns = ['_build', 'Thumbs.db', '.DS_Store']
 
+collections = {
+    'notebooks': {
+      'driver': 'copy_folder',
+      'source': 'notebooks/'
+   }
+}
+
+nb_execution_mode = 'off'
 
 
 # -- Options for HTML output -------------------------------------------------

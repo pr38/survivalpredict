@@ -2,6 +2,10 @@ import numba as nb
 import numpy as np
 
 
+#to do: remove l1 from coxph.
+#l1 has not effect on the hessian/second-order partial derivative.
+#unless newton-raphson is not used, there is no point using l1.
+#l1 mostly makes sense in the context of asynchronous shrinkage, which will not happen in  newton-raphson.
 def elasticnet_loss_jacobian_hessian(weights, alpha, l1_ratio):
     l1 = alpha * l1_ratio * np.abs(weights).sum()
     l2 = 0.5 * alpha * (1.0 - l1_ratio) * np.square(weights).sum()
