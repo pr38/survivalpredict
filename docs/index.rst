@@ -8,8 +8,6 @@
  survivalpredict documentation
 ###############################
 
-
-
 Survivalpredict is a Python package for survival analysis with a
 statistical learning lens. Survival analysis is a branch of statistics
 that frames its modeling on the assumption that all observations are
@@ -19,6 +17,10 @@ fail at the last known interval in time and is `censored`. Survival
 curves are the estimated probability of failure at different intervals
 of time. SurvivalPredict has a singular focus on `survival curves` and
 being able to tune models using statistical learning methodology.
+
+Survival analysis was originally developed in the context of clinical
+trials; but has applications in customer churn, lead
+conversion,financial defaults, operational failures, and elsewhere.
 
 Core features of Survivalpredict are:
 
@@ -32,8 +34,6 @@ Core features of Survivalpredict are:
 -  Ability to easily cross-validate estimators with Brier scores.
 
 -  First-class support for left-censorship and model stratification.
-
-
 
 Survivalpredict makes some assumptions:
 
@@ -55,8 +55,6 @@ Survivalpredict makes some assumptions:
 
 -  When calling `predict` on an estimator, columns of the output will
    correspond to all times till max time, starting at time 1.
-
-
 
 .. toctree::
    :maxdepth: 1
