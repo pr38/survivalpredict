@@ -519,9 +519,9 @@ class ParametricDiscreteTimePH(_SurvivalPredictBase):
 
     base_harard_prior_exponential_lam : float, default=5.0
         This class runs a Pymc model under the hood. The base hazard
-        distrabution's parameters are modeled as exponential distributions.
+        distribution's parameters are modeled as exponential distributions.
         This parameter is the 'lam' of the prior of the base hazard
-        distrabution' parameters. It is recommended to scale the data to avoid
+        distribution' parameters. It is recommended to scale the data to avoid
         tuning this parameter.
 
     scipy_minimize_method : {"nelder-mead","powell","CG","BFGS","Newton-CG","L-BFGS-B","TNC","COBYLA","SLSQP","trust-constr","dogleg","trust-ncg","trust-exact","trust-krylov","basinhopping",}, default='L-BFGS-B'

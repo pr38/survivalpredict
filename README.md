@@ -13,13 +13,6 @@ WIP. A pypi release should be released soon. In the meantime, the code in this r
 
 
 
-survivalpredict makes some assumptions. 
-* The `times` array, the last known observed time of an individual before the event or censorship, is to be encoded as an integer. It is assumed that `time` starts with 1, and each interval of time is equally important. It is advised to engineer time to max out at a few thousand; large values in the `time` array can trigger expensive compute on several estimators.
-*  The `events` array should be of boolean type, `True` if the individual experiences an event (e.g., charged, death, conversion, etc.), and `False` otherwise.
-*  If the data is left-censored, in cases of time-varying effects or recurrent events, the smallest value of the `times_start` array should be 0, and the `times_start` array should be smaller than the `times` array.
-*  When calling `predict` on an estimator, columns of the output will correspond to all times till max time, starting at time 1.
-
-
 ## Estimators
 The estimators implemented in the `survivalpredict.estimators` sub-module.
 
