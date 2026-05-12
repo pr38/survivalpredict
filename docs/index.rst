@@ -17,10 +17,15 @@ survivalpredict documentation
 
 
 .. toctree::
-   :maxdepth: 3
-   :caption: Docs:
+   :maxdepth: 2
+   :caption: API:
 
-   API <api/index>
+   api/estimators
+   api/metrics
+   api/model_selection
+   api/pipeline
+   api/strata_preprocessing
+   api/validation
 
    
 

@@ -46,8 +46,10 @@ nb_execution_mode = 'off'
 # -- Options for HTML output -------------------------------------------------
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#options-for-html-output
 
-html_theme = 'alabaster'
 html_static_path = ['_static']
+html_theme = 'piccolo_theme'
+html_short_title = "survivalpredict"
+
 
 ##########
 # The suffix of source filenames.
