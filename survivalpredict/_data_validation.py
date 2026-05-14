@@ -51,8 +51,8 @@ def validate_times_start_array(times_start, times):
     times_start = _as_int_np_array(times_start, "times_start array")
     if times_start.min() < 0:
         raise ValueError("times_start array assumes the lowest value is 0")
-    if (times_start >= times).all():
-        raise ValueError("times_start array should be less than times array")
+    if (times_start >= times).any():
+        raise ValueError("times_start array values should be less than times array")
 
     return np.array(times_start)
 

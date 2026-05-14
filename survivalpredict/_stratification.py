@@ -88,6 +88,10 @@ def split_and_preprocess_data_by_strata(
                 all_times
             )
 
+            if 0 not in unique_times_s:
+                unique_times_s = np.concatenate((np.array([0]), unique_times_s))
+                unique_times_return_inverse += 1
+
             time_return_inverse_s = unique_times_return_inverse[len(times_s) :]
             time_start_return_inverse_s = unique_times_return_inverse[
                 : len(times_start_s)
@@ -157,6 +161,10 @@ def preprocess_data_for_cox_ph(X, times, events, strata=None, times_start=None):
             unique_times, unique_times_return_inverse = np.unique(
                 all_times, return_inverse=True
             )
+
+            if 0 not in unique_times:
+                unique_times = np.concatenate(([0], unique_times))
+                unique_times_return_inverse += 1
 
             time_return_inverse = unique_times_return_inverse[len(times) :]
             time_start_return_inverse = unique_times_return_inverse[: len(times_start)]

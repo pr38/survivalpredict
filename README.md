@@ -26,7 +26,7 @@ The estimators implemented in the `survivalpredict.estimators` sub-module.
     <tr>
         <td>CoxProportionalHazard</td>
         <td>
-        Cox Proportional Hazards model is a linear semi-parametric relative risk model. A staple of survival analysis. Fast and efficient to train. Survivalpredict's implementation has many optimizations and is up to 10x to 20x faster than other implementations available to Python. Both breslow and efron ties are supported. Currently, only the Breslow base hazard is available.
+        Cox Proportional Hazards model is a linear semi-parametric relative risk model. A staple of survival analysis. Fast and efficient to train. Survivalpredict's implementation has many optimizations and is faster than other implementations available to Python. Both breslow and efron ties are supported. Currently, only the Breslow base hazard is available.
         </td>
         <td> Yes</td>
         <td>Yes</td>
