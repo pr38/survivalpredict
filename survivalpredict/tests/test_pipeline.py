@@ -140,7 +140,6 @@ def test_pipeline_on_sk_GridSearchCV(X_df_y):
     pram_grid = {
         "stratacolumntransformer__stratabuilderencoder__columns": cat_col_combonations,
         "coxproportionalhazard__alpha": [0, 10, 100],
-        "coxproportionalhazard__l1_ratio": [0.0, 0.25, 0.5, 0.75, 0.1],
     }
 
     gs = GridSearchCV(

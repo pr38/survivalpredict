@@ -4,7 +4,7 @@ import pytest
 from ..estimators import (
     AalenAdditiveHazard,
     ParametricDiscreteTimePH,
-    CoxElasticNetPH,
+    CoxPHElasticNet,
     CoxProportionalHazard,
     CoxNeuralNetPH,
     KaplanMeierSurvivalEstimator,
@@ -35,7 +35,7 @@ X = np.concatenate([X] * 3)
     [
         AalenAdditiveHazard,
         ParametricDiscreteTimePH,
-        CoxElasticNetPH,
+        CoxPHElasticNet,
         CoxProportionalHazard,
         CoxNeuralNetPH,
         KaplanMeierSurvivalEstimator,
