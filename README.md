@@ -1,10 +1,8 @@
 # SurvivalPredict
 
-A python package centered around Survival Analysis Statistical Learning, for predicting survival curves. The code in this repo is lovingly written without any stochastic generative processes.
+A python package centered around Survival Analysis Statistical Learning, for predicting survival curves. The code in this repo is lovingly without any stochastic generative processes.
 
 See <a href=https://survivalpredict.readthedocs.io/en/latest/index.html>documentation</a>
-
-WIP. A pypi release should be released soon. In the meantime, the code in this repo can be installed via `pip install git+https://github.com/pr38/survivalpredict`. Ideally, before the first pypi release docstrings and example notebooks will be added. With the goal of finishing left-censoring support, sparse data support as well as  tree-based, ensemble, and exotic neural network  models further down the line. 
 
 
 <a href=https://github.com/pr38/survivalpredict/blob/main/notebooks/survivalpredict_walkthrough_demo.ipynb>General walkthrough-demo</a>
@@ -33,7 +31,7 @@ The estimators implemented in the `survivalpredict.estimators` sub-module.
     </tr>
     <tr>
         <td>ParametricDiscreteTimePH</td>
-        <td> A fully parametric linear hazards model. Chen, weibull, log_normal, log_logistic, gompertz, gamma and additive_chen_weibull baseline hazards are available as hyperparameters. Maximum likelihood is estimated using a survival distinct time likelihood with censorship. Implemented with Pymc/Pytensor, with either a Jax or numba backend.</td>
+        <td> A fully parametric linear hazards model. Chen, weibull, log_normal, log_logistic, gompertz, gamma and 'additive chen weibull' baseline hazards are available as hyperparameters. Maximum likelihood is estimated using a survival distinct time likelihood with censorship. Implemented with Pymc/Pytensor, with either a Jax or numba backend.</td>
         <td>Yes</td>
         <td>Yes</td>
     </tr>

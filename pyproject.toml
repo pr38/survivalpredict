@@ -1,7 +1,7 @@
 [project]
 name = "survivalpredict"
 version = "0.0.1"
-description = "Predicting survival for out-of-sample data, with a scikit-learn-like api."
+description = "python survival analysis/survival curves, with a scikit-learn-like api."
 readme = "README.md"
 requires-python = ">=3.11"
 authors = [
@@ -19,6 +19,33 @@ dependencies = [
     "scikit-learn>=1.4.0",
     "scipy>=1.15.3",
 ]
+
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Science/Research",
+    "Intended Audience :: Developers",
+    'Intended Audience :: Education',
+    "Operating System :: MacOS",
+    "Operating System :: Microsoft :: Windows",
+    "Operating System :: POSIX",
+    "Operating System :: Unix",
+    "Programming Language :: Python",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
+    "Topic :: Scientific/Engineering",
+    "Topic :: Scientific/Engineering :: Mathematics",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+    "Topic :: Software Development",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+]
+
+license =  "Apache License (2.0)"
+
+keywords = ["cox", "survival"]
+
 
 [project.optional-dependencies]
 test = [
@@ -39,4 +66,8 @@ docs = [
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
+
+[project.urls]
+Homepage = "https://github.com/pr38/survivalpredict"
+Documentation = "https://survivalpredict.readthedocs.io/"
 
