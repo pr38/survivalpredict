@@ -15,7 +15,7 @@ sys.path.insert(0, os.path.abspath(os.path.pardir))
 project = 'survivalpredict'
 copyright = '2026, Pouya Rezvanipour'
 author = 'Pouya Rezvanipour'
-release = '0.0.1'
+#release = '0.0.1'
 
 # -- General configuration ---------------------------------------------------
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#general-configuration
@@ -47,7 +47,7 @@ nb_execution_mode = 'off'
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#options-for-html-output
 
 html_static_path = ['_static']
-html_theme = 'piccolo_theme'
+html_theme = "furo"
 html_short_title = "survivalpredict"
 
 
@@ -62,4 +62,11 @@ source_suffix = ".rst"
 master_doc = "index"
 
 autodoc_typehints = "description"
+autodoc_default_options = {
+   'exclude-members': 'get_metadata_routing, set_fit_request, set_predict_request, set_params, set_fit_request, get_params, _sk_visual_block_, _run_transformers',
+   "members": None,
+   "inherited-members": None,
+
+}
+autosummary_generate = True
 

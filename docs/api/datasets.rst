@@ -7,10 +7,11 @@ The ``survivalpredict.datasets`` package embeds some toy datasets.
 
 
 .. autosummary::
-   :nosignatures:
+    :nosignatures:
+    :toctree: generated/
 
-   load_iranian_telecom_churn
-   load_kickstarter
+    load_iranian_telecom_churn
+    load_kickstarter
 
 
 .. autofunction:: survivalpredict.datasets.load_iranian_telecom_churn

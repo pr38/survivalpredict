@@ -4,10 +4,11 @@ model selection
 .. currentmodule:: survivalpredict.model_selection
 
 .. autosummary::
-   :nosignatures:
+    :nosignatures:
+    :toctree: generated/
 
-   Sur_GridSearchCV
-   Sur_RandomizedSearchCV
+    Sur_GridSearchCV
+    Sur_RandomizedSearchCV
 
 
 .. autoclass:: survivalpredict.model_selection.Sur_GridSearchCV

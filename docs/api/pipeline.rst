@@ -4,10 +4,12 @@ pipeline
 
 .. autosummary::
     :nosignatures:
+    :toctree: generated/
 
-   build_sklearn_pipeline_target
-   SklearnSurvivalPipeline
-   make_sklearn_survival_pipeline
+    build_sklearn_pipeline_target
+    SklearnSurvivalPipeline
+    make_sklearn_survival_pipeline
+
 
 .. autofunction:: survivalpredict.pipeline.build_sklearn_pipeline_target
     

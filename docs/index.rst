@@ -62,21 +62,22 @@ Survivalpredict makes some assumptions:
    correspond to all times till max time, starting at time 1.
 
 .. toctree::
-   :maxdepth: 1
-   :caption: Walkthroughs:
+    :maxdepth: 2
+    :titlesonly:
+    :caption: Walkthroughs:
 
-   General walkthrough<_collections/notebooks/survivalpredict_walkthrough_demo.ipynb>
-
-   Interfacing with Scikit-learn<_collections/notebooks/demo_sklearn_interface.ipynb>
+    General Walkthrough<_collections/notebooks/survivalpredict_walkthrough_demo.ipynb>
+    Interfacing With Scikit-learn<_collections/notebooks/demo_sklearn_interface.ipynb>
 
 .. toctree::
-   :maxdepth: 2
-   :caption: API:
+    :maxdepth: 2
+    :titlesonly:
+    :caption: API:
 
-   api/datasets
-   api/estimators
-   api/metrics
-   api/model_selection
-   api/pipeline
-   api/strata_preprocessing
-   api/validation
+    api/datasets
+    api/estimators
+    api/metrics
+    api/model_selection
+    api/pipeline
+    api/strata_preprocessing
+    api/validation

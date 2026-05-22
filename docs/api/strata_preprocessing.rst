@@ -4,12 +4,14 @@ strata preprocessing
 .. currentmodule:: survivalpredict.strata_preprocessing
 
 .. autosummary::
-   :nosignatures:
+    :nosignatures:
+    :toctree: generated/
 
-   StrataBuilderDiscretizer
-   StrataBuilderEncoder
-   StrataColumnTransformer
-   make_strata_column_transformer
+
+    StrataBuilderDiscretizer
+    StrataBuilderEncoder
+    StrataColumnTransformer
+    make_strata_column_transformer
 
 
 .. autoclass:: survivalpredict.strata_preprocessing.StrataBuilderDiscretizer
