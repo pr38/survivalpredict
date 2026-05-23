@@ -4,7 +4,7 @@ A python package centered around Survival Analysis Statistical Learning, for pre
 
 Install
 ---------
->pip install dask-tfidf
+>pip install survivalpredict
 
 
 Documentation
