@@ -2,8 +2,19 @@
 
 A python package centered around Survival Analysis Statistical Learning, for predicting survival curves. The code in this repo is lovingly without any stochastic generative processes.
 
-See <a href=https://survivalpredict.readthedocs.io/en/latest/index.html>documentation</a>
+Install
+---------
+>pip install dask-tfidf
 
+
+Documentation
+-------------
+
+
+See <a href=https://survivalpredict.readthedocs.io/en/latest/index.html>readthedocs link</a> for documentation.
+
+
+There are also notebooks.
 
 <a href=https://github.com/pr38/survivalpredict/blob/main/notebooks/survivalpredict_walkthrough_demo.ipynb>General walkthrough-demo</a>
 

@@ -26,6 +26,15 @@ able to tune models using statistical learning methodology. The ability
 to easily perform cross-validation, hyperparameter tuning, and feature
 selection on survival models is core to SurvivalPredict.
 
+Installation
+============
+
+You can easily install Survivalpredict via the pip command.
+
+	``pip install survivalpredict``
+
+
+
 Core features of Survivalpredict are:
 
 -  Vectorised code base, with some necessary parts written in numba.
