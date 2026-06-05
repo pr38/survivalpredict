@@ -23,7 +23,6 @@ from ._cox_ph_elastic_net import (
 from ._cox_ph_estimation import train_cox_ph_breslow, train_cox_ph_efron
 from ._cox_ph_estimation_left_censorship import (
     train_cox_ph_breslow_left_censorship,
-    train_cox_ph_breslow_with_left_censorship_scipy_minimize,
     train_cox_ph_efron_left_censorship,
 )
 from ._data_validation import (
@@ -109,7 +108,7 @@ class CoxProportionalHazard(_SurvivalPredictBase):
         Constant that multiplies the penalty terms. Used to penalize
         coefficients durring training. Used for L2 penalty.
 
-    max_iter : Optional[int], default=100
+    max_iter : Optional[int], default=20
         The maximum number of iterations.
 
     ties : {"breslow", "efron"}, default='breslow'
@@ -156,7 +155,7 @@ class CoxProportionalHazard(_SurvivalPredictBase):
         self,
         *,
         alpha: float = 0.0,
-        max_iter: Optional[int] = 100,
+        max_iter: Optional[int] = 20,
         ties: Optional[Literal["breslow", "efron"]] = "breslow",
         tol: float = 1e-9,
     ):
@@ -254,7 +253,7 @@ class CoxProportionalHazard(_SurvivalPredictBase):
             )
 
             if self.ties == "efron":
-                coefs, loss = train_cox_ph_efron_left_censorship(
+                coefs, loss, self.max_iter_seen_ = train_cox_ph_efron_left_censorship(
                     n_strata,
                     X_strata,
                     events_strata,
@@ -270,7 +269,7 @@ class CoxProportionalHazard(_SurvivalPredictBase):
                 )
             elif self.ties == "breslow":
 
-                coefs, loss = train_cox_ph_breslow_left_censorship(
+                coefs, loss, self.max_iter_seen_ = train_cox_ph_breslow_left_censorship(
                     X_strata,
                     events_strata,
                     n_unique_times_strata,
@@ -304,7 +303,7 @@ class CoxProportionalHazard(_SurvivalPredictBase):
 
             if self.ties == "breslow":
 
-                coefs, loss = train_cox_ph_breslow(
+                coefs, loss, self.max_iter_seen_ = train_cox_ph_breslow(
                     X_strata,
                     events_strata,
                     n_unique_times_strata,
@@ -326,7 +325,7 @@ class CoxProportionalHazard(_SurvivalPredictBase):
                     n_unique_times_strata,
                 )
 
-                coefs, loss = train_cox_ph_efron(
+                coefs, loss, self.max_iter_seen_ = train_cox_ph_efron(
                     n_strata,
                     X_strata,
                     events_strata,
