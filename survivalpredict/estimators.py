@@ -25,6 +25,7 @@ from ._cox_ph_estimation_left_censorship import (
     train_cox_ph_breslow_left_censorship,
     train_cox_ph_efron_left_censorship,
 )
+from ._cox_ph_pymc import get_cox_pymc_model_no_strata, get_cox_pymc_model_with_strata
 from ._data_validation import (
     _as_int,
     _as_int_np_array,
@@ -465,6 +466,152 @@ class CoxProportionalHazard(_SurvivalPredictBase):
         check_is_fitted(self)
 
         return np.exp(np.dot(X, self.coef_))
+
+    def get_pymc_model(
+        self,
+        X: np.ndarray[tuple[int, int], np.dtype[np.float64]],
+        times: np.ndarray[tuple[int], np.dtype[np.int64]],
+        events: np.ndarray[tuple[int], np.dtype[np.bool_]],
+        labes_names: list[str] | np.ndarray[tuple[int], np.dtype[Any]] | None = None,
+        strata: Optional[np.ndarray[tuple[int], np.dtype[np.int64]]] = None,
+        times_start: Optional[np.ndarray[tuple[int], np.dtype[np.int64]]] = None,
+        coefs_sigma: float = 10,
+        empirical_bayes: bool = True,
+    ) -> "pymc.Model":
+        """
+        Returns a pymc model that is equivalent to the initialized Cox Proportional Hazards. 
+        Allows for generating Markov chain Monte Carlo traces for inference.
+        
+        Parameters
+        ----------
+        X : array-like of shape (n_samples, n_features)
+            Training data.
+
+        times : array-like of shape (n_samples), dtype=np.int64
+            Point in time last observed.
+
+        events : array-like of shape (n_samples), dtype=np.bool_
+            Experianed event.
+
+        labes_names : list of str, default=None
+            Names for feature, allows for parameters associated with each
+            feature to be named accordingly.
+
+        strata : array-like of shape (n_samples,), dtype=np.int64, default=None
+            If passed in, associated strata for per observation.
+
+        times_start : array-like of shape (n_samples, dtype=np.int64), default=None
+            Starting point for observation. If not passed in, all times_start times are assumed to be 0.
+
+        coefs_sigma: float, default=10.0
+            Sigma of the normal distribution used for the coefficients.
+                    
+        empirical_bayes: bool, default=True.
+            If True and the class has been fit/trained, the initial coefficient values will be the trained coefficients.
+
+        Returns
+        -------
+        "pymc.Model"
+        """
+
+
+        use_left_censorship = times_start is not None
+
+        X, times, events = validate_survival_data(X, times, events)
+
+        if strata is not None:
+            strata = _as_int_np_array(strata, "strata")
+
+        if use_left_censorship:
+            times_start = validate_times_start_array(times_start, times)
+
+        self._max_time_observed = np.max(times)
+
+        if empirical_bayes and hasattr(self, "coef_"):
+            coefs = self.coef_
+        else:
+            coefs = None
+
+        if self.ties == "efron":
+            # get_l_div_m_stata_per_strata assumes sorted data
+            argsort = times.argsort(kind="mergesort")
+            times = times[argsort]
+            events = events[argsort]
+            X = X[argsort]
+            if use_left_censorship:
+                times_start = times_start[argsort]
+
+        (
+            n_strata,
+            _,
+            X_strata,
+            times_strata,
+            events_strata,
+            time_return_inverse_strata,
+            n_unique_times_strata,
+            _,
+            _,
+            time_start_return_inverse_strata,
+        ) = preprocess_data_for_cox_ph(
+            X, times, events, strata=strata, times_start=times_start
+        )
+
+        if self.ties == "efron":
+
+            l_div_m_stata = get_l_div_m_stata_per_strata(
+                events_strata,
+                times_strata,
+                time_return_inverse_strata,
+                n_unique_times_strata,
+            )
+
+        n_unique_times = max(n_unique_times_strata)
+
+        X = np.concat(X_strata)
+        times = np.concat(times_strata)
+        events = np.concat(events_strata)
+        time_end_return_inverse = np.concat(time_return_inverse_strata)
+
+        if self.ties == "efron":
+            l_div_m = np.concat(l_div_m_stata)
+        else:
+            l_div_m = None
+
+        if use_left_censorship:
+            time_start_return_inverse = np.concat(time_start_return_inverse_strata)
+        else:
+            time_start_return_inverse = None
+
+        if strata is None:
+            return get_cox_pymc_model_no_strata(
+                X,
+                time_end_return_inverse,
+                events,
+                n_unique_times,
+                time_start_return_inverse=time_start_return_inverse,
+                ties=self.ties,
+                column_names=labes_names,
+                l_div_m=l_div_m,
+                coefs_sigma=coefs_sigma,
+                alpha=self.alpha,
+                coefs_inital=coefs,
+            )
+        else:
+            return get_cox_pymc_model_with_strata(
+                X,
+                time_end_return_inverse,
+                events,
+                strata,
+                n_strata,
+                n_unique_times,
+                time_start_return_inverse=time_start_return_inverse,
+                ties=self.ties,
+                column_names=labes_names,
+                l_div_m=l_div_m,
+                coefs_sigma=coefs_sigma,
+                alpha=self.alpha,
+                coefs_inital=coefs,
+            )
 
 
 class ParametricDiscreteTimePH(_SurvivalPredictBase):
