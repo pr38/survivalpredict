@@ -109,7 +109,7 @@ class CoxProportionalHazard(_SurvivalPredictBase):
         Constant that multiplies the penalty terms. Used to penalize
         coefficients durring training. Used for L2 penalty.
 
-    max_iter : Optional[int], default=20
+    max_iter : int, default=20
         The maximum number of iterations.
 
     ties : {"breslow", "efron"}, default='breslow'
@@ -147,7 +147,7 @@ class CoxProportionalHazard(_SurvivalPredictBase):
 
     _parameter_constraints: dict = {
         "alpha": [Interval(Real, 0, None, closed="left")],
-        "max_iter": [Interval(Integral, 1, None, closed="left"), None],
+        "max_iter": [Interval(Integral, 1, None, closed="left")],
         "ties": [StrOptions({"breslow", "efron"})],
         "tol": [Interval(Real, 0, None, closed="left")],
     }
@@ -156,8 +156,8 @@ class CoxProportionalHazard(_SurvivalPredictBase):
         self,
         *,
         alpha: float = 0.0,
-        max_iter: Optional[int] = 20,
-        ties: Optional[Literal["breslow", "efron"]] = "breslow",
+        max_iter: int = 20,
+        ties: Literal["breslow", "efron"] = "breslow",
         tol: float = 1e-9,
     ):
         self.alpha = alpha
@@ -480,7 +480,7 @@ class CoxProportionalHazard(_SurvivalPredictBase):
     ) -> "pymc.Model":
         """
         Returns a pymc model that is equivalent to the initialized Cox Proportional Hazards. 
-        Allows for generating Markov chain Monte Carlo traces for inference.
+        Allows for generating 'Markov chain Monte Carlo' traces for inference.
         
         Parameters
         ----------
@@ -505,7 +505,7 @@ class CoxProportionalHazard(_SurvivalPredictBase):
 
         coefs_sigma: float, default=10.0
             Sigma of the normal distribution used for the coefficients.
-                    
+
         empirical_bayes: bool, default=True.
             If True and the class has been fit/trained, the initial coefficient values will be the trained coefficients.
 
@@ -2108,7 +2108,7 @@ class CoxPHElasticNet(_SurvivalPredictBase):
     _parameter_constraints: dict = {
         "alpha": [Interval(Real, 0, None, closed="left")],
         "l1_ratio": [Interval(Real, 0, 1, closed="both")],
-        "max_iter": [Interval(Integral, 1, None, closed="left"), None],
+        "max_iter": [Interval(Integral, 1, None, closed="left"),],
         "tol": [Interval(Real, 0, None, closed="left")],
     }
 
@@ -2117,7 +2117,7 @@ class CoxPHElasticNet(_SurvivalPredictBase):
         *,
         alpha: float = 0.0,
         l1_ratio: float = 0.5,
-        max_iter: Optional[int] = 100,
+        max_iter: int = 100,
         tol: float = 1e-9,
     ):
         self.alpha = alpha
