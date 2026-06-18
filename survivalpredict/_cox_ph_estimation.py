@@ -1,7 +1,7 @@
 import numba as nb
 import numpy as np
 
-from ._optimize import newton_ralphson_with_half_step
+from ._optimize import newton
 
 
 # to do: remove l1 from coxph.
@@ -266,7 +266,7 @@ def train_cox_ph_breslow(
         l1_ratio,
     )
 
-    weights, loss, max_iter_seen = newton_ralphson_with_half_step(
+    weights, loss, max_iter_seen = newton(
         breslow_neg_log_likelihood_loss_jacobian_hessian_with_strata_and_penalty,
         args,
         breslow_neg_log_likelihood_loss_with_strata_and_penalty,
@@ -592,7 +592,7 @@ def train_cox_ph_efron(
         l1_ratio,
     )
 
-    weights, loss, max_iter_seen = newton_ralphson_with_half_step(
+    weights, loss, max_iter_seen = newton(
         efron_neg_log_likelihood_loss_jacobian_hessian_with_strata_and_penalty,
         args,
         efron_neg_log_likelihood_loss_with_strata_and_penalty,
