@@ -109,8 +109,11 @@ class CoxProportionalHazard(_SurvivalPredictBase):
         Constant that multiplies the penalty terms. Used to penalize
         coefficients durring training. Used for L2 penalty.
 
-    max_iter : int, default=20
-        The maximum number of iterations.
+    max_iter : int, default=25
+        The maximum number of iterations used for newton and adaptive_newton methods.
+
+    solver : {"newton", "adaptive_newton","BFGS","L-BFGS-B"}
+        Numerical solver to use.
 
     ties : {"breslow", "efron"}, default='breslow'
         The method to handle ‘tied’ event times. Cox’s coefficients are
@@ -148,6 +151,7 @@ class CoxProportionalHazard(_SurvivalPredictBase):
     _parameter_constraints: dict = {
         "alpha": [Interval(Real, 0, None, closed="left")],
         "max_iter": [Interval(Integral, 1, None, closed="left")],
+        "method": [StrOptions({"newton", "adaptive_newton","BFGS","L-BFGS-B"})],
         "ties": [StrOptions({"breslow", "efron"})],
         "tol": [Interval(Real, 0, None, closed="left")],
     }
@@ -156,14 +160,17 @@ class CoxProportionalHazard(_SurvivalPredictBase):
         self,
         *,
         alpha: float = 0.0,
-        max_iter: int = 20,
+        max_iter: int = 25,
+        solver: Literal["newton","adaptive_newton","BFGS","L-BFGS-B"]='newton',
         ties: Literal["breslow", "efron"] = "breslow",
         tol: float = 1e-9,
+
     ):
         self.alpha = alpha
         self.max_iter = max_iter
         self.ties = ties
         self.tol = tol
+        self.solver = solver
 
     @_fit_context(prefer_skip_nested_validation=True)
     def fit(
@@ -267,6 +274,7 @@ class CoxProportionalHazard(_SurvivalPredictBase):
                     coefs,
                     self.max_iter,
                     self.tol,
+                    self.solver
                 )
             elif self.ties == "breslow":
 
@@ -283,6 +291,7 @@ class CoxProportionalHazard(_SurvivalPredictBase):
                     coefs,
                     self.max_iter,
                     self.tol,
+                    self.solver,
                 )
 
             else:
@@ -316,6 +325,7 @@ class CoxProportionalHazard(_SurvivalPredictBase):
                     coefs,
                     self.max_iter,
                     self.tol,
+                    self.solver,
                 )
 
             elif self.ties == "efron":
@@ -338,6 +348,7 @@ class CoxProportionalHazard(_SurvivalPredictBase):
                     coefs,
                     self.max_iter,
                     self.tol,
+                    self.solver,
                 )
             else:
                 raise ValueError("unknow ties")
