@@ -113,7 +113,8 @@ class CoxProportionalHazard(_SurvivalPredictBase):
         The maximum number of iterations used for newton and adaptive_newton methods.
 
     solver : {"newton", "adaptive_newton","BFGS","L-BFGS-B"}
-        Numerical solver to use.
+        Numerical solver to use. 'BFGS'/'L-BFGS-B' use less allocate less memory,
+        as they don't require calculating the hessian.
 
     ties : {"breslow", "efron"}, default='breslow'
         The method to handle ‘tied’ event times. Cox’s coefficients are
@@ -1347,6 +1348,7 @@ class KNeighborsSurvival(_SurvivalPredictBase):
     """
     Survival curves implementing the k-nearest neighbors vote.
 
+    Builds Kaplan Meier curves on k-nearest neighbors.
     Parameters docs are taken from scikit-learn.
 
     Parameters

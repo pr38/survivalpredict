@@ -34,8 +34,6 @@ def get_cox_pymc_model_no_strata(
     else:
         coords["labes"] = np.arange(X.shape[1])
 
-    if coefs_inital is None:
-        coefs_inital = 0
 
     with pm.Model(coords=coords) as model:
         data = pm.Data("data", X)
@@ -44,7 +42,7 @@ def get_cox_pymc_model_no_strata(
         if ties == "efron":
             l_div_m_pt = pm.Data("l_div_m", l_div_m)
 
-        coefs = pm.Normal("coefs", coefs_inital, coefs_sigma, dims="labes")
+        coefs = pm.Normal("coefs", 0, coefs_sigma, dims="labes",initval=coefs_inital)
 
         ###getting products
         o = pt.dot(data, coefs)
@@ -277,9 +275,6 @@ def get_cox_pymc_model_with_strata(
     else:
         coords["labes"] = np.arange(X.shape[1])
 
-    if coefs_inital is None:
-        coefs_inital = 0
-
     with pm.Model(coords=coords) as model:
 
         data = pm.Data("data", X)
@@ -297,7 +292,7 @@ def get_cox_pymc_model_with_strata(
                 "time_start_return_inverse", time_start_return_inverse
             )
 
-        coefs = pm.Normal("coefs", coefs_inital, coefs_sigma, dims="labes")
+        coefs = pm.Normal("coefs", 0, coefs_sigma, dims="labes",initval=coefs_inital)
 
         o = pt.dot(data, coefs)
         o_exp = pt.exp(o)
