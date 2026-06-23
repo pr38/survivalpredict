@@ -97,6 +97,7 @@ def get_parametric_discrete_time_ph_model(
     coef_prior_normal_sigma: Optional[float] = None,
     base_harard_prior_exponential_lam: Optional[float] = None,
     times_start: Optional[np.ndarray[tuple[int], np.dtype[np.int64]]] = None,
+    initval_coef: Optional[np.ndarray[tuple[int], np.dtype[np.int64]]] = None,
 ) -> "pymc.Model":
     import pymc as pm  # type: ignore
     import pytensor
@@ -142,7 +143,9 @@ def get_parametric_discrete_time_ph_model(
 
         data = pm.Data("data", X, dims=("row_ids", "labes"))
 
-        coefs = pm.Normal("coefs", sigma=coef_prior_normal_sigma, dims="labes")
+        coefs = pm.Normal(
+            "coefs", sigma=coef_prior_normal_sigma, dims="labes", initval=initval_coef
+        )
 
         relative_risk = pt.exp(pt.dot(data, coefs))
 

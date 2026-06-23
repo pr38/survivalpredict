@@ -152,7 +152,7 @@ class CoxProportionalHazard(_SurvivalPredictBase):
     _parameter_constraints: dict = {
         "alpha": [Interval(Real, 0, None, closed="left")],
         "max_iter": [Interval(Integral, 1, None, closed="left")],
-        "method": [StrOptions({"newton", "adaptive_newton","BFGS","L-BFGS-B"})],
+        "method": [StrOptions({"newton", "adaptive_newton", "BFGS", "L-BFGS-B"})],
         "ties": [StrOptions({"breslow", "efron"})],
         "tol": [Interval(Real, 0, None, closed="left")],
     }
@@ -162,10 +162,9 @@ class CoxProportionalHazard(_SurvivalPredictBase):
         *,
         alpha: float = 0.0,
         max_iter: int = 25,
-        solver: Literal["newton","adaptive_newton","BFGS","L-BFGS-B"]='newton',
+        solver: Literal["newton", "adaptive_newton", "BFGS", "L-BFGS-B"] = "newton",
         ties: Literal["breslow", "efron"] = "breslow",
         tol: float = 1e-9,
-
     ):
         self.alpha = alpha
         self.max_iter = max_iter
@@ -275,7 +274,7 @@ class CoxProportionalHazard(_SurvivalPredictBase):
                     coefs,
                     self.max_iter,
                     self.tol,
-                    self.solver
+                    self.solver,
                 )
             elif self.ties == "breslow":
 
@@ -491,9 +490,9 @@ class CoxProportionalHazard(_SurvivalPredictBase):
         empirical_bayes: bool = True,
     ) -> "pymc.Model":
         """
-        Returns a pymc model that is equivalent to the initialized Cox Proportional Hazards. 
+        Returns a pymc model that is equivalent to the initialized Cox Proportional Hazards.
         Allows for generating 'Markov chain Monte Carlo' traces for inference.
-        
+
         Parameters
         ----------
         X : array-like of shape (n_samples, n_features)
@@ -525,7 +524,6 @@ class CoxProportionalHazard(_SurvivalPredictBase):
         -------
         "pymc.Model"
         """
-
 
         use_left_censorship = times_start is not None
 
@@ -1049,6 +1047,7 @@ class ParametricDiscreteTimePH(_SurvivalPredictBase):
         strata: Optional[np.ndarray[tuple[int], np.dtype[np.int64]]] = None,
         strata_names: list[str] | np.ndarray[tuple[int], np.dtype[Any]] | None = None,
         times_start: Optional[np.ndarray[tuple[int], np.dtype[np.int64]]] = None,
+        empirical_bayes: bool = True,
     ) -> "pymc.Model":
         """
         Return the underlying Pymc model.
@@ -1081,6 +1080,9 @@ class ParametricDiscreteTimePH(_SurvivalPredictBase):
         times_start : array-like of shape (n_samples, dtype=np.int64), default=None
             Starting point for observation. If not passed in, all times_start times are assumed to be 0.
 
+        empirical_bayes: bool, default=True.
+            If True and the class has been fit/trained, the initial coefficient values will be the trained coefficients.
+
         Returns
         -------
         "pymc.Model"
@@ -1089,6 +1091,11 @@ class ParametricDiscreteTimePH(_SurvivalPredictBase):
         base_hazard_pdf_callable, n_base_hazard_prams = (
             self._get_distribution_function_and_n_prams()
         )
+
+        if empirical_bayes and hasattr(self, "coef_"):
+            initval_coef = self.coef_
+        else:
+            initval_coef = None
 
         X, times, events = validate_survival_data(X, times, events)
         if strata is not None:
@@ -1129,6 +1136,7 @@ class ParametricDiscreteTimePH(_SurvivalPredictBase):
             coef_prior_normal_sigma=self.coef_prior_normal_sigma,
             base_harard_prior_exponential_lam=self.base_harard_prior_exponential_lam,
             times_start=times_start,
+            initval_coef=initval_coef,
         )
 
 
@@ -2121,7 +2129,9 @@ class CoxPHElasticNet(_SurvivalPredictBase):
     _parameter_constraints: dict = {
         "alpha": [Interval(Real, 0, None, closed="left")],
         "l1_ratio": [Interval(Real, 0, 1, closed="both")],
-        "max_iter": [Interval(Integral, 1, None, closed="left"),],
+        "max_iter": [
+            Interval(Integral, 1, None, closed="left"),
+        ],
         "tol": [Interval(Real, 0, None, closed="left")],
     }
 
