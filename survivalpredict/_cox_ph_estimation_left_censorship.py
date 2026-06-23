@@ -6,11 +6,28 @@ from ._cox_ph_estimation import (
     elasticnet_loss_jacobian_hessian,
     get_first_half_of_efron_hessian,
     get_second_half_of_efron_hessian,
+    self_outterproduct_mul_groupby_time,
+)
+from ._optimize import newton, adaptive_newton
+
+# to do: remove l1 from coxph.
+
+def safe_log(a):
+    return np.log(a, out=np.zeros_like(a, dtype=np.float64), where=(a != 0))
+
+
+
+at_risk_per_time_with_start_times_sig = nb.types.Array(
+    nb.types.float64, 1, "C", aligned=True
+)(
+    nb.types.Array(nb.types.float64, 1, "C", aligned=True),
+    nb.types.Array(nb.types.int64, 1, "C", aligned=True),
+    nb.types.Array(nb.types.int64, 1, "C", aligned=True),
+    nb.types.int64,
 )
 
-#to do: remove l1 from coxph.
 
-@nb.njit(cache=True)
+@nb.njit(at_risk_per_time_with_start_times_sig, cache=True)
 def at_risk_per_time_with_start_times(
     p_exp, time_end_return_inverse, time_start_return_inverse, n_unique_times
 ):
@@ -24,7 +41,17 @@ def at_risk_per_time_with_start_times(
     return output
 
 
-@nb.njit(cache=True)
+bincount_reverse_cumsum_along_axis_sig = nb.types.Array(
+    nb.types.float64, 2, "C", aligned=True
+)(
+    nb.types.Array(nb.types.float64, 2, "C", aligned=True),
+    nb.types.Array(nb.types.int64, 1, "C", aligned=True),
+    nb.types.Array(nb.types.int64, 1, "C", aligned=True),
+    nb.types.int64,
+)
+
+
+@nb.njit(bincount_reverse_cumsum_along_axis_sig, cache=True)
 def bincount_reverse_cumsum_along_axis(
     XxXb, time_end_return_inverse, time_start_return_inverse, n_unique_times
 ):
@@ -35,195 +62,6 @@ def bincount_reverse_cumsum_along_axis(
         output[time_start_return_inverse[i] : time_end_return_inverse[i]] += XxXb[i]
 
     return output
-
-
-@nb.njit(cache=True)
-def get_breslow_n_log_likeliehood_with_left_censorship(
-    weights,
-    X,
-    events,
-    time_end_return_inverse,
-    time_start_return_inverse,
-    event_counts_at_times,
-    n_unique_times,
-):
-    p = np.dot(X, weights)
-    p_exp = np.exp(p)
-    risk_set_at_time = at_risk_per_time_with_start_times(
-        p_exp, time_end_return_inverse, time_start_return_inverse, n_unique_times
-    )
-    risk_set = risk_set_at_time[time_end_return_inverse - 1]
-    return -np.sum(np.nan_to_num(events * (p - np.log(risk_set))))
-
-
-get_breslow_n_log_likeliehood_with_left_censorship_with_strata_sig = nb.types.float64(
-    nb.types.Array(nb.types.float64, 1, "C", False, aligned=True),
-    nb.types.List(nb.types.Array(nb.types.float64, 2, "C"), True),
-    nb.types.List(nb.types.Array(nb.types.bool_, 1, "C"), True),
-    nb.types.List(nb.types.int64, True),
-    nb.types.List(nb.types.Array(nb.types.float64, 1, "C"), True),
-    nb.types.List(nb.types.Array(nb.types.int64, 1, "C"), True),
-    nb.types.List(nb.types.Array(nb.types.int64, 1, "C"), True),
-    nb.types.int64,
-    nb.types.float64,
-    nb.types.float64,
-)
-
-
-@nb.njit(get_breslow_n_log_likeliehood_with_left_censorship_with_strata_sig, cache=True)
-def get_breslow_n_log_likeliehood_with_left_censorship_with_strata(
-    weights,
-    X_strata,
-    events_strata,
-    n_unique_times_strata,
-    event_counts_at_times_strata,
-    time_return_inverse_strata,
-    time_start_return_inverse_strata,
-    n_strata,
-    alpha,
-    l1_ratio,
-):
-
-    l1 = alpha * l1_ratio * np.abs(weights).sum()
-    l2 = 0.5 * alpha * (1.0 - l1_ratio) * np.square(weights).sum()
-    loss = l1 + l2
-
-    for i in range(n_strata):
-        loss += get_breslow_n_log_likeliehood_with_left_censorship(
-            weights,
-            X_strata[i],
-            events_strata[i],
-            time_return_inverse_strata[i],
-            time_start_return_inverse_strata[i],
-            event_counts_at_times_strata[i],
-            n_unique_times_strata[i],
-        )
-
-    return loss
-
-
-@nb.njit(cache=True)
-def get_breslow_jacobian_with_left_censorship(
-    weights,
-    X,
-    events,
-    time_end_return_inverse,
-    time_start_return_inverse,
-    event_counts_at_times,
-    n_unique_times,
-):
-
-    p = np.dot(X, weights)
-    p_exp = np.exp(p)
-    risk_set_at_time = at_risk_per_time_with_start_times(
-        p_exp, time_end_return_inverse, time_start_return_inverse, n_unique_times
-    )
-    risk_set = risk_set_at_time[time_end_return_inverse - 1]
-
-    XxXb = np.multiply(X, p_exp[:, np.newaxis])
-
-    XxXb_at_Xt_at_time_cumsum = bincount_reverse_cumsum_along_axis(
-        XxXb, time_end_return_inverse, time_start_return_inverse, n_unique_times
-    )
-
-    XxXb_at_Xt_at_index = XxXb_at_Xt_at_time_cumsum[time_end_return_inverse - 1]
-
-    XxXb_at_Xt_at_index_div_riskset = XxXb_at_Xt_at_index / risk_set[:, np.newaxis]
-
-    jacobian_presum = events[:, np.newaxis] * (X - XxXb_at_Xt_at_index_div_riskset)
-
-    jacobian_presum = np.nan_to_num(jacobian_presum)
-
-    jacobian = -np.sum(jacobian_presum, axis=0)
-
-    return jacobian
-
-
-get_breslow_jacobian_with_left_censorship_with_strata_sig = nb.types.Array(
-    nb.types.float64, 1, "C"
-)(
-    nb.types.Array(nb.types.float64, 1, "C", False, aligned=True),
-    nb.types.List(nb.types.Array(nb.types.float64, 2, "C"), True),
-    nb.types.List(nb.types.Array(nb.types.bool_, 1, "C"), True),
-    nb.types.List(nb.types.int64, True),
-    nb.types.List(nb.types.Array(nb.types.float64, 1, "C"), True),
-    nb.types.List(nb.types.Array(nb.types.int64, 1, "C"), True),
-    nb.types.List(nb.types.Array(nb.types.int64, 1, "C"), True),
-    nb.types.int64,
-    nb.types.float64,
-    nb.types.float64,
-)
-
-
-@nb.njit(get_breslow_jacobian_with_left_censorship_with_strata_sig, cache=True)
-def get_breslow_jacobian_with_left_censorship_with_strata(
-    weights,
-    X_strata,
-    events_strata,
-    n_unique_times_strata,
-    event_counts_at_times_strata,
-    time_return_inverse_strata,
-    time_start_return_inverse_strata,
-    n_strata,
-    alpha,
-    l1_ratio,
-):
-    l1_jacobian = np.sign(weights) * alpha * l1_ratio
-    l2_jacobian = 2 * weights * (0.5 * alpha) * (1 - l1_ratio)
-
-    jacobian = l1_jacobian + l2_jacobian
-
-    for i in range(n_strata):
-        jacobian += get_breslow_jacobian_with_left_censorship(
-            weights,
-            X_strata[i],
-            events_strata[i],
-            time_return_inverse_strata[i],
-            time_start_return_inverse_strata[i],
-            event_counts_at_times_strata[i],
-            n_unique_times_strata[i],
-        )
-
-    return jacobian
-
-
-def train_cox_ph_breslow_with_left_censorship_scipy_minimize(
-    X_strata,
-    events_strata,
-    n_unique_times_strata,
-    event_counts_at_times_strata,
-    time_return_inverse_strata,
-    time_start_return_inverse_strata,
-    n_strata,
-    alpha,
-    l1_ratio,
-    weights,
-    tol,
-    method,
-):
-    result = minimize(
-        get_breslow_n_log_likeliehood_with_left_censorship_with_strata,
-        weights,
-        jac=get_breslow_jacobian_with_left_censorship_with_strata,
-        args=(
-            X_strata,
-            events_strata,
-            n_unique_times_strata,
-            event_counts_at_times_strata,
-            time_return_inverse_strata,
-            time_start_return_inverse_strata,
-            n_strata,
-            alpha,
-            l1_ratio,
-        ),
-        tol=tol,
-        method=method,
-    )
-
-    weights = result.x
-    loss = result.fun
-
-    return weights, loss
 
 
 self_outterproduct_mul_groupby_time_sig = nb.types.Array(
@@ -276,7 +114,7 @@ def breslow_neg_log_likelihood_loss_jacobian_hessian_left_censorship(
     )
     risk_set = risk_set_at_time[time_end_return_inverse - 1]
 
-    loss = -np.sum(np.nan_to_num(events * (p - np.log(risk_set))))
+    loss = -np.sum(np.nan_to_num(events * (p - safe_log(risk_set))))
 
     XxXb = np.multiply(X, p_exp[:, np.newaxis])
 
@@ -316,6 +154,205 @@ def breslow_neg_log_likelihood_loss_jacobian_hessian_left_censorship(
     return loss, jacobian, hessian
 
 
+def breslow_neg_log_likelihood_loss_jacobian_hessian_left_censorship_with_strata_and_penalty(
+    weights,
+    n_strata,
+    X_strata,
+    events_strata,
+    time_end_return_inverse_strata,
+    time_start_return_inverse_strata,
+    n_unique_times_strata,
+    event_counts_at_times_strata,
+    alpha,
+    l1_ratio,
+):
+    neg_log_likelihoods = []
+    neg_log_likelihood_jacobians = []
+    neg_log_likelihood_hessians = []
+    for s_i in range(n_strata):
+        (
+            neg_log_likelihood_loss_strata,
+            neg_log_likelihood_jacobian_strata,
+            neg_log_likelihood_hessian_strata,
+        ) = breslow_neg_log_likelihood_loss_jacobian_hessian_left_censorship(
+            weights,
+            X_strata[s_i],
+            events_strata[s_i],
+            time_end_return_inverse_strata[s_i],
+            time_start_return_inverse_strata[s_i],
+            n_unique_times_strata[s_i],
+            event_counts_at_times_strata[s_i],
+        )
+        neg_log_likelihoods.append(neg_log_likelihood_loss_strata)
+        neg_log_likelihood_jacobians.append(neg_log_likelihood_jacobian_strata)
+        neg_log_likelihood_hessians.append(neg_log_likelihood_hessian_strata)
+
+    neg_log_likelihood_loss = np.sum(neg_log_likelihoods, 0)
+    neg_log_likelihood_jacobian = np.sum(neg_log_likelihood_jacobians, 0)
+    neg_log_likelihood_hessian = np.sum(neg_log_likelihood_hessians, 0)
+
+    elasticnet_loss, elasticnet_jacobian, elasticnet_hessian = (
+        elasticnet_loss_jacobian_hessian(weights, alpha, l1_ratio)
+    )
+
+    loss = neg_log_likelihood_loss + elasticnet_loss
+    jacobian = neg_log_likelihood_jacobian + elasticnet_jacobian
+    hessian = neg_log_likelihood_hessian + elasticnet_hessian
+
+    return loss, jacobian, hessian
+
+
+def breslow_neg_log_likelihood_loss_left_censorship(
+    weights,
+    X,
+    events,
+    time_end_return_inverse,
+    time_start_return_inverse,
+    n_unique_times,
+    event_counts_at_times,
+):
+    p = np.dot(X, weights)
+    p_exp = np.exp(p)
+    risk_set_at_time = at_risk_per_time_with_start_times(
+        p_exp, time_end_return_inverse, time_start_return_inverse, n_unique_times
+    )
+    risk_set = risk_set_at_time[time_end_return_inverse - 1]
+
+    return -np.sum(np.nan_to_num(events * (p - safe_log(risk_set))))
+
+
+def breslow_neg_log_likelihood_loss_left_censorship_with_strata_and_penalty(
+    weights,
+    n_strata,
+    X_strata,
+    events_strata,
+    time_end_return_inverse_strata,
+    time_start_return_inverse_strata,
+    n_unique_times_strata,
+    event_counts_at_times_strata,
+    alpha,
+    l1_ratio,
+):
+    neg_log_likelihoods = []
+    for s_i in range(n_strata):
+        neg_log_likelihood_loss_strata = (
+            breslow_neg_log_likelihood_loss_left_censorship(
+                weights,
+                X_strata[s_i],
+                events_strata[s_i],
+                time_end_return_inverse_strata[s_i],
+                time_start_return_inverse_strata[s_i],
+                n_unique_times_strata[s_i],
+                event_counts_at_times_strata[s_i],
+            )
+        )
+        neg_log_likelihoods.append(neg_log_likelihood_loss_strata)
+
+    neg_log_likelihood_loss = np.sum(neg_log_likelihoods, 0)
+    elasticnet_loss, _, __ = elasticnet_loss_jacobian_hessian(weights, alpha, l1_ratio)
+
+    loss = neg_log_likelihood_loss + elasticnet_loss
+
+    return loss
+
+
+get_breslow_jacobian_with_left_censorship_sig = nb.types.Array(
+    nb.types.float64, 1, "C"
+)(
+    nb.types.Array(nb.types.float64, 1, "C", False, aligned=True),
+    nb.types.Array(nb.types.float64, 2, "C"),
+    nb.types.Array(nb.types.bool_, 1, "C"),
+    nb.types.Array(nb.types.int64, 1, "C"),
+    nb.types.Array(nb.types.int64, 1, "C"),
+    nb.types.Array(nb.types.float64, 1, "C"),
+    nb.types.int64,
+)
+
+@nb.njit(get_breslow_jacobian_with_left_censorship_sig,cache=True)
+def get_breslow_jacobian_with_left_censorship(
+    weights,
+    X,
+    events,
+    time_end_return_inverse,
+    time_start_return_inverse,
+    event_counts_at_times,
+    n_unique_times,
+):
+
+    p = np.dot(X, weights)
+    p_exp = np.exp(p)
+    risk_set_at_time = at_risk_per_time_with_start_times(
+        p_exp, time_end_return_inverse, time_start_return_inverse, n_unique_times
+    )
+    risk_set = risk_set_at_time[time_end_return_inverse - 1]
+
+    XxXb = np.multiply(X, p_exp[:, np.newaxis])
+
+    XxXb_at_Xt_at_time_cumsum = bincount_reverse_cumsum_along_axis(
+        XxXb, time_end_return_inverse, time_start_return_inverse, n_unique_times
+    )
+
+    XxXb_at_Xt_at_index = XxXb_at_Xt_at_time_cumsum[time_end_return_inverse - 1]
+
+    XxXb_at_Xt_at_index_div_riskset = XxXb_at_Xt_at_index / risk_set[:, np.newaxis]
+
+    jacobian_presum = events[:, np.newaxis] * (X - XxXb_at_Xt_at_index_div_riskset)
+
+    jacobian_presum = np.nan_to_num(jacobian_presum)
+
+    jacobian = -np.sum(jacobian_presum, axis=0)
+
+    return jacobian
+
+
+get_breslow_jacobian_with_left_censorship_with_strata_sig = nb.types.Array(
+    nb.types.float64, 1, "C"
+)(
+    nb.types.Array(nb.types.float64, 1, "C", False, aligned=True),
+    nb.types.int64,
+    nb.types.List(nb.types.Array(nb.types.float64, 2, "C"), True),
+    nb.types.List(nb.types.Array(nb.types.bool_, 1, "C"), True),
+    nb.types.List(nb.types.Array(nb.types.int64, 1, "C"), True),
+    nb.types.List(nb.types.Array(nb.types.int64, 1, "C"), True),
+    nb.types.List(nb.types.int64, True),
+    nb.types.List(nb.types.Array(nb.types.float64, 1, "C"), True),
+    nb.types.float64,
+    nb.types.float64,
+)
+
+
+@nb.njit(get_breslow_jacobian_with_left_censorship_with_strata_sig, cache=True)
+def get_breslow_jacobian_with_left_censorship_with_strata(
+    weights,
+    n_strata,
+    X_strata,
+    events_strata,
+    time_return_inverse_strata,
+    time_start_return_inverse_strata,
+    n_unique_times_strata,
+    event_counts_at_times_strata,
+    alpha,
+    l1_ratio,
+):
+    l1_jacobian = np.sign(weights) * alpha * l1_ratio
+    l2_jacobian = 2 * weights * (0.5 * alpha) * (1 - l1_ratio)
+
+    jacobian = l1_jacobian + l2_jacobian
+
+    for i in range(n_strata):
+        jacobian += get_breslow_jacobian_with_left_censorship(
+            weights,
+            X_strata[i],
+            events_strata[i],
+            time_return_inverse_strata[i],
+            time_start_return_inverse_strata[i],
+            event_counts_at_times_strata[i],
+            n_unique_times_strata[i],
+        )
+
+    return jacobian
+
+
 def train_cox_ph_breslow_left_censorship(
     X_strata,
     events_strata,
@@ -329,61 +366,53 @@ def train_cox_ph_breslow_left_censorship(
     weights,
     max_iter,
     tol,
+    method="newton",
 ):
+    args = (
+        n_strata,
+        X_strata,
+        events_strata,
+        time_end_return_inverse_strata,
+        time_start_return_inverse_strata,
+        n_unique_times_strata,
+        event_counts_at_times_strata,
+        alpha,
+        l1_ratio,
+    )
 
-    last_loss = np.array(np.inf)
-
-    half_step = False
-
-    for _ in range(max_iter):
-        neg_log_likelihoods = []
-        neg_log_likelihood_jacobians = []
-        neg_log_likelihood_hessians = []
-        for s_i in range(n_strata):
-            (
-                neg_log_likelihood_loss_strata,
-                neg_log_likelihood_jacobian_strata,
-                neg_log_likelihood_hessian_strata,
-            ) = breslow_neg_log_likelihood_loss_jacobian_hessian_left_censorship(
-                weights,
-                X_strata[s_i],
-                events_strata[s_i],
-                time_end_return_inverse_strata[s_i],
-                time_start_return_inverse_strata[s_i],
-                n_unique_times_strata[s_i],
-                event_counts_at_times_strata[s_i],
-            )
-            neg_log_likelihoods.append(neg_log_likelihood_loss_strata)
-            neg_log_likelihood_jacobians.append(neg_log_likelihood_jacobian_strata)
-            neg_log_likelihood_hessians.append(neg_log_likelihood_hessian_strata)
-
-        neg_log_likelihood_loss = np.sum(neg_log_likelihoods, 0)
-        neg_log_likelihood_jacobian = np.sum(neg_log_likelihood_jacobians, 0)
-        neg_log_likelihood_hessian = np.sum(neg_log_likelihood_hessians, 0)
-
-        elasticnet_loss, elasticnet_jacobian, elasticnet_hessian = (
-            elasticnet_loss_jacobian_hessian(weights, alpha, l1_ratio)
+    if method == "newton":
+        weights, loss, max_iter_seen = newton(
+            breslow_neg_log_likelihood_loss_jacobian_hessian_left_censorship_with_strata_and_penalty,
+            args,
+            breslow_neg_log_likelihood_loss_left_censorship_with_strata_and_penalty,
+            max_iter,
+            tol,
+            weights,
+        )
+    elif method == "adaptive_newton":
+        weights, loss, max_iter_seen = adaptive_newton(
+            breslow_neg_log_likelihood_loss_jacobian_hessian_left_censorship_with_strata_and_penalty,
+            args,
+            breslow_neg_log_likelihood_loss_left_censorship_with_strata_and_penalty,
+            max_iter,
+            tol,
+            weights,
+        )
+    else:
+        result = minimize(
+            breslow_neg_log_likelihood_loss_left_censorship_with_strata_and_penalty,
+            weights,
+            jac=get_breslow_jacobian_with_left_censorship_with_strata,
+            args=args,
+            tol=tol,
+            method=method,
         )
 
-        loss = neg_log_likelihood_loss + elasticnet_loss
-        jacobian = neg_log_likelihood_jacobian + elasticnet_jacobian
-        hessian = neg_log_likelihood_hessian + elasticnet_hessian
+        weights = result.x
+        loss = result.fun
+        max_iter_seen = result.nit
 
-        if abs(last_loss - loss) <= tol:
-            break
-        elif (loss < last_loss) & (not half_step):
-            last_loss = loss
-            weights = weights - np.dot(np.linalg.inv(hessian), jacobian)
-        elif (loss < last_loss) & half_step:
-            last_loss = loss
-            weights = weights - (0.5 * np.dot(np.linalg.inv(hessian), jacobian))
-        else:
-            if half_step:
-                break
-            else:
-                half_step = True
-
-    return weights, loss
+    return weights, loss, max_iter_seen
 
 
 @nb.njit(
@@ -455,35 +484,46 @@ def efron_neg_log_likelihood_loss_jacobian_hessian_left_censorship(
     p = np.dot(X, weights)
     p_exp = np.exp(p)
 
-    total_risk_per_at_time = np.bincount(
-        time_end_return_inverse - 1, weights=p_exp, minlength=n_unique_times
-    )
-    total_risk_per_at_index = total_risk_per_at_time[time_end_return_inverse - 1]
-
     risk_set_at_time = at_risk_per_time_with_start_times(
         p_exp, time_end_return_inverse, time_start_return_inverse, n_unique_times
     )
     risk_set = risk_set_at_time[time_end_return_inverse - 1]
 
+    total_event_risk_per_at_index = np.bincount(
+        time_end_return_inverse - 1, weights=p_exp * events, minlength=n_unique_times
+    )[time_end_return_inverse - 1]
+
     risk_set_minus_l_div_m_x_total_risk_per_at_index = risk_set - (
-        l_div_m * total_risk_per_at_index
+        l_div_m * total_event_risk_per_at_index
     )
 
     loss = -np.sum(
-        events * (p - np.log(risk_set_minus_l_div_m_x_total_risk_per_at_index))
+        np.nan_to_num(
+            events * (p - safe_log(risk_set_minus_l_div_m_x_total_risk_per_at_index))
+        )
     )
 
     XxP = np.multiply(X, p_exp[:, np.newaxis])
 
-    XxP_per_time = bincount_along_axis(XxP, time_end_return_inverse, n_unique_times)
-    XxP_at_h = XxP_per_time[time_end_return_inverse - 1]
+    # XxP_per_time = bincount_along_axis(XxP, time_end_return_inverse - 1, n_unique_times)
+    # XxP_at_h = XxP_per_time[time_end_return_inverse - 1]
+
+    XxP_event_per_time = np.apply_along_axis(
+        lambda a: np.bincount(
+            time_end_return_inverse - 1, weights=a, minlength=n_unique_times
+        ),
+        0,
+        XxP * events[:, np.newaxis],
+    )
 
     XxP_per_time_cumsum = bincount_reverse_cumsum_along_axis(
         XxP, time_end_return_inverse, time_start_return_inverse, n_unique_times
     )
     XxP_per_time_cumsum_at_index = XxP_per_time_cumsum[time_end_return_inverse - 1]
 
-    l_div_m_times_XxXb_at_Xh = l_div_m[:, None] * XxP_at_h
+    l_div_m_times_XxXb_at_Xh = (
+        l_div_m[:, None] * XxP_event_per_time[time_end_return_inverse - 1]
+    )
 
     jacobian_numerator = XxP_per_time_cumsum_at_index - l_div_m_times_XxXb_at_Xh
 
@@ -503,16 +543,18 @@ def efron_neg_log_likelihood_loss_jacobian_hessian_left_censorship(
         jacobian_numerator, risk_set_minus_l_div_m_x_total_risk_per_at_index, events
     )
 
-    X2xXb_at_time, X2xXb_at_risk = (
-        self_outterproduct_mul_groupby_broadcast_to_at_at_time_risk(
-            X, p_exp, time_end_return_inverse, time_start_return_inverse, n_unique_times
-        )
+    _, X2xXb_at_risk = self_outterproduct_mul_groupby_broadcast_to_at_at_time_risk(
+        X, p_exp, time_end_return_inverse, time_start_return_inverse, n_unique_times
+    )
+
+    X2xXb_events_at_time = self_outterproduct_mul_groupby_time(
+        X, p_exp * events, time_end_return_inverse, n_unique_times
     )
 
     second_half_of_efron_hessian = get_second_half_of_efron_hessian(
         events,
         time_end_return_inverse - 1,
-        X2xXb_at_time,
+        X2xXb_events_at_time,
         X2xXb_at_risk,
         l_div_m,
         risk_set_minus_l_div_m_x_total_risk_per_at_index,
@@ -521,6 +563,221 @@ def efron_neg_log_likelihood_loss_jacobian_hessian_left_censorship(
     hessian = -(first_half_of_efron_hessian - second_half_of_efron_hessian)
 
     return loss, jacobian, hessian
+
+
+def efron_neg_log_likelihood_loss_jacobian_hessian_left_censorship_with_strata_and_penalty(
+    weights,
+    n_strata,
+    X_strata,
+    events_strata,
+    n_unique_times_strata,
+    l_div_m_stata,
+    time_end_return_inverse_strata,
+    time_start_return_inverse_strata,
+    alpha,
+    l1_ratio,
+):
+
+    neg_log_likelihoods = []
+    neg_log_likelihood_jacobians = []
+    neg_log_likelihood_hessians = []
+    for s_i in range(n_strata):
+        (
+            neg_log_likelihood_loss_strata,
+            neg_log_likelihood_jacobian_strata,
+            neg_log_likelihood_hessian_strata,
+        ) = efron_neg_log_likelihood_loss_jacobian_hessian_left_censorship(
+            weights,
+            X_strata[s_i],
+            events_strata[s_i],
+            time_end_return_inverse_strata[s_i],
+            time_start_return_inverse_strata[s_i],
+            l_div_m_stata[s_i],
+            n_unique_times_strata[s_i],
+        )
+        neg_log_likelihoods.append(neg_log_likelihood_loss_strata)
+        neg_log_likelihood_jacobians.append(neg_log_likelihood_jacobian_strata)
+        neg_log_likelihood_hessians.append(neg_log_likelihood_hessian_strata)
+
+    neg_log_likelihood_loss = np.sum(neg_log_likelihoods, 0)
+    neg_log_likelihood_jacobian = np.sum(neg_log_likelihood_jacobians, 0)
+    neg_log_likelihood_hessian = np.sum(neg_log_likelihood_hessians, 0)
+
+    elasticnet_loss, elasticnet_jacobian, elasticnet_hessian = (
+        elasticnet_loss_jacobian_hessian(weights, alpha, l1_ratio)
+    )
+
+    loss = neg_log_likelihood_loss + elasticnet_loss
+    jacobian = neg_log_likelihood_jacobian + elasticnet_jacobian
+    hessian = neg_log_likelihood_hessian + elasticnet_hessian
+
+    return loss, jacobian, hessian
+
+
+def efron_neg_log_likelihood_loss(
+    weights,
+    X,
+    events,
+    time_end_return_inverse,
+    time_start_return_inverse,
+    l_div_m,
+    n_unique_times,
+):
+    p = np.dot(X, weights)
+    p_exp = np.exp(p)
+
+    risk_set_at_time = at_risk_per_time_with_start_times(
+        p_exp, time_end_return_inverse, time_start_return_inverse, n_unique_times
+    )
+    risk_set = risk_set_at_time[time_end_return_inverse - 1]
+
+    total_event_risk_per_at_index = np.bincount(
+        time_end_return_inverse - 1, weights=p_exp * events, minlength=n_unique_times
+    )[time_end_return_inverse - 1]
+
+    risk_set_minus_l_div_m_x_total_risk_per_at_index = risk_set - (
+        l_div_m * total_event_risk_per_at_index
+    )
+
+    return -np.sum(
+        events * (p - safe_log(risk_set_minus_l_div_m_x_total_risk_per_at_index))
+    )
+
+
+def efron_neg_log_likelihood_jacobian_left_censorship(
+    weights,
+    X,
+    events,
+    time_end_return_inverse,
+    time_start_return_inverse,
+    l_div_m,
+    n_unique_times,
+):
+    p = np.dot(X, weights)
+    p_exp = np.exp(p)
+
+    risk_set_at_time = at_risk_per_time_with_start_times(
+        p_exp, time_end_return_inverse, time_start_return_inverse, n_unique_times
+    )
+    risk_set = risk_set_at_time[time_end_return_inverse - 1]
+
+    total_event_risk_per_at_index = np.bincount(
+        time_end_return_inverse - 1, weights=p_exp * events, minlength=n_unique_times
+    )[time_end_return_inverse - 1]
+
+    risk_set_minus_l_div_m_x_total_risk_per_at_index = risk_set - (
+        l_div_m * total_event_risk_per_at_index
+    )
+
+    XxP = np.multiply(X, p_exp[:, np.newaxis])
+
+    # XxP_per_time = bincount_along_axis(XxP, time_end_return_inverse - 1, n_unique_times)
+    # XxP_at_h = XxP_per_time[time_end_return_inverse - 1]
+
+    XxP_event_per_time = np.apply_along_axis(
+        lambda a: np.bincount(
+            time_end_return_inverse - 1, weights=a, minlength=n_unique_times
+        ),
+        0,
+        XxP * events[:, np.newaxis],
+    )
+
+    XxP_per_time_cumsum = bincount_reverse_cumsum_along_axis(
+        XxP, time_end_return_inverse, time_start_return_inverse, n_unique_times
+    )
+    XxP_per_time_cumsum_at_index = XxP_per_time_cumsum[time_end_return_inverse - 1]
+
+    l_div_m_times_XxXb_at_Xh = (
+        l_div_m[:, None] * XxP_event_per_time[time_end_return_inverse - 1]
+    )
+
+    jacobian_numerator = XxP_per_time_cumsum_at_index - l_div_m_times_XxXb_at_Xh
+
+    jacobian_presum = events[:, np.newaxis] * (
+        X
+        - (
+            jacobian_numerator
+            / risk_set_minus_l_div_m_x_total_risk_per_at_index[:, None]
+        )
+    )
+
+    jacobian_presum = np.nan_to_num(jacobian_presum)
+
+    jacobian = -np.sum(jacobian_presum, axis=0)
+
+    return jacobian
+
+
+def efron_neg_log_likelihood_loss_left_censorship_with_strata_and_penalty(
+    weights,
+    n_strata,
+    X_strata,
+    events_strata,
+    n_unique_times_strata,
+    l_div_m_stata,
+    time_end_return_inverse_strata,
+    time_start_return_inverse_strata,
+    alpha,
+    l1_ratio,
+):
+    neg_log_likelihoods = []
+
+    for s_i in range(n_strata):
+        neg_log_likelihood_loss_strata = efron_neg_log_likelihood_loss(
+            weights,
+            X_strata[s_i],
+            events_strata[s_i],
+            time_end_return_inverse_strata[s_i],
+            time_start_return_inverse_strata[s_i],
+            l_div_m_stata[s_i],
+            n_unique_times_strata[s_i],
+        )
+        neg_log_likelihoods.append(neg_log_likelihood_loss_strata)
+
+    neg_log_likelihood_loss = np.sum(neg_log_likelihoods, 0)
+
+    elasticnet_loss, elasticnet_jacobian, elasticnet_hessian = (
+        elasticnet_loss_jacobian_hessian(weights, alpha, l1_ratio)
+    )
+
+    return neg_log_likelihood_loss + elasticnet_loss
+
+
+def efron_neg_log_likelihood_jacobian_left_censorship_with_strata_and_penalty(
+    weights,
+    n_strata,
+    X_strata,
+    events_strata,
+    n_unique_times_strata,
+    l_div_m_stata,
+    time_end_return_inverse_strata,
+    time_start_return_inverse_strata,
+    alpha,
+    l1_ratio,
+):
+
+    neg_log_likelihood_jacobians = []
+    for s_i in range(n_strata):
+        (neg_log_likelihood_jacobian_strata,) = (
+            efron_neg_log_likelihood_jacobian_left_censorship(
+                weights,
+                X_strata[s_i],
+                events_strata[s_i],
+                time_end_return_inverse_strata[s_i],
+                time_start_return_inverse_strata[s_i],
+                l_div_m_stata[s_i],
+                n_unique_times_strata[s_i],
+            )
+        )
+        neg_log_likelihood_jacobians.append(neg_log_likelihood_jacobian_strata)
+
+    neg_log_likelihood_jacobian = np.sum(neg_log_likelihood_jacobians, 0)
+
+    _, elasticnet_jacobian, _ = elasticnet_loss_jacobian_hessian(
+        weights, alpha, l1_ratio
+    )
+
+    return neg_log_likelihood_jacobian + elasticnet_jacobian
 
 
 def train_cox_ph_efron_left_censorship(
@@ -536,58 +793,51 @@ def train_cox_ph_efron_left_censorship(
     weights,
     max_iter,
     tol,
+    method="newton",
 ):
+    args = (
+        n_strata,
+        X_strata,
+        events_strata,
+        n_unique_times_strata,
+        l_div_m_stata,
+        time_end_return_inverse_strata,
+        time_start_return_inverse_strata,
+        alpha,
+        l1_ratio,
+    )
 
-    last_loss = np.array(np.inf)
-
-    half_step = False
-
-    for _ in range(max_iter):
-        neg_log_likelihoods = []
-        neg_log_likelihood_jacobians = []
-        neg_log_likelihood_hessians = []
-        for s_i in range(n_strata):
-            (
-                neg_log_likelihood_loss_strata,
-                neg_log_likelihood_jacobian_strata,
-                neg_log_likelihood_hessian_strata,
-            ) = efron_neg_log_likelihood_loss_jacobian_hessian_left_censorship(
-                weights,
-                X_strata[s_i],
-                events_strata[s_i],
-                time_end_return_inverse_strata[s_i],
-                time_start_return_inverse_strata[s_i],
-                l_div_m_stata[s_i],
-                n_unique_times_strata[s_i],
-            )
-            neg_log_likelihoods.append(neg_log_likelihood_loss_strata)
-            neg_log_likelihood_jacobians.append(neg_log_likelihood_jacobian_strata)
-            neg_log_likelihood_hessians.append(neg_log_likelihood_hessian_strata)
-
-        neg_log_likelihood_loss = np.sum(neg_log_likelihoods, 0)
-        neg_log_likelihood_jacobian = np.sum(neg_log_likelihood_jacobians, 0)
-        neg_log_likelihood_hessian = np.sum(neg_log_likelihood_hessians, 0)
-
-        elasticnet_loss, elasticnet_jacobian, elasticnet_hessian = (
-            elasticnet_loss_jacobian_hessian(weights, alpha, l1_ratio)
+    if method == "newton":
+        weights, loss, max_iter_seen = newton(
+            efron_neg_log_likelihood_loss_jacobian_hessian_left_censorship_with_strata_and_penalty,
+            args,
+            efron_neg_log_likelihood_loss_left_censorship_with_strata_and_penalty,
+            max_iter,
+            tol,
+            weights,
+        )
+    elif method == "adaptive_newton":
+        weights, loss, max_iter_seen = adaptive_newton(
+            efron_neg_log_likelihood_loss_jacobian_hessian_left_censorship_with_strata_and_penalty,
+            args,
+            efron_neg_log_likelihood_loss_left_censorship_with_strata_and_penalty,
+            max_iter,
+            tol,
+            weights,
         )
 
-        loss = neg_log_likelihood_loss + elasticnet_loss
-        jacobian = neg_log_likelihood_jacobian + elasticnet_jacobian
-        hessian = neg_log_likelihood_hessian + elasticnet_hessian
+    else:
+        result = minimize(
+            efron_neg_log_likelihood_loss_left_censorship_with_strata_and_penalty,
+            weights,
+            jac=efron_neg_log_likelihood_jacobian_left_censorship_with_strata_and_penalty,
+            args=args,
+            tol=tol,
+            method=method,
+        )
 
-        if abs(last_loss - loss) <= tol:
-            break
-        elif (loss < last_loss) & (not half_step):
-            last_loss = loss
-            weights = weights - np.dot(np.linalg.inv(hessian), jacobian)
-        elif (loss < last_loss) & half_step:
-            last_loss = loss
-            weights = weights - (0.5 * np.dot(np.linalg.inv(hessian), jacobian))
-        else:
-            if half_step:
-                break
-            else:
-                half_step = True
+        weights = result.x
+        loss = result.fun
+        max_iter_seen = result.nit
 
-    return weights, loss
+    return weights, loss, max_iter_seen

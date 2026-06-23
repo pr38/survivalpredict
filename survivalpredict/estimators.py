@@ -23,9 +23,9 @@ from ._cox_ph_elastic_net import (
 from ._cox_ph_estimation import train_cox_ph_breslow, train_cox_ph_efron
 from ._cox_ph_estimation_left_censorship import (
     train_cox_ph_breslow_left_censorship,
-    train_cox_ph_breslow_with_left_censorship_scipy_minimize,
     train_cox_ph_efron_left_censorship,
 )
+from ._cox_ph_pymc import get_cox_pymc_model_no_strata, get_cox_pymc_model_with_strata
 from ._data_validation import (
     _as_int,
     _as_int_np_array,
@@ -109,8 +109,12 @@ class CoxProportionalHazard(_SurvivalPredictBase):
         Constant that multiplies the penalty terms. Used to penalize
         coefficients durring training. Used for L2 penalty.
 
-    max_iter : Optional[int], default=100
-        The maximum number of iterations.
+    max_iter : int, default=25
+        The maximum number of iterations used for newton and adaptive_newton methods.
+
+    solver : {"newton", "adaptive_newton","BFGS","L-BFGS-B"}
+        Numerical solver to use. 'BFGS'/'L-BFGS-B' use less allocate less memory,
+        as they don't require calculating the hessian.
 
     ties : {"breslow", "efron"}, default='breslow'
         The method to handle ‘tied’ event times. Cox’s coefficients are
@@ -147,7 +151,8 @@ class CoxProportionalHazard(_SurvivalPredictBase):
 
     _parameter_constraints: dict = {
         "alpha": [Interval(Real, 0, None, closed="left")],
-        "max_iter": [Interval(Integral, 1, None, closed="left"), None],
+        "max_iter": [Interval(Integral, 1, None, closed="left")],
+        "method": [StrOptions({"newton", "adaptive_newton", "BFGS", "L-BFGS-B"})],
         "ties": [StrOptions({"breslow", "efron"})],
         "tol": [Interval(Real, 0, None, closed="left")],
     }
@@ -156,14 +161,16 @@ class CoxProportionalHazard(_SurvivalPredictBase):
         self,
         *,
         alpha: float = 0.0,
-        max_iter: Optional[int] = 100,
-        ties: Optional[Literal["breslow", "efron"]] = "breslow",
+        max_iter: int = 25,
+        solver: Literal["newton", "adaptive_newton", "BFGS", "L-BFGS-B"] = "newton",
+        ties: Literal["breslow", "efron"] = "breslow",
         tol: float = 1e-9,
     ):
         self.alpha = alpha
         self.max_iter = max_iter
         self.ties = ties
         self.tol = tol
+        self.solver = solver
 
     @_fit_context(prefer_skip_nested_validation=True)
     def fit(
@@ -254,7 +261,7 @@ class CoxProportionalHazard(_SurvivalPredictBase):
             )
 
             if self.ties == "efron":
-                coefs, loss = train_cox_ph_efron_left_censorship(
+                coefs, loss, self.max_iter_seen_ = train_cox_ph_efron_left_censorship(
                     n_strata,
                     X_strata,
                     events_strata,
@@ -267,10 +274,11 @@ class CoxProportionalHazard(_SurvivalPredictBase):
                     coefs,
                     self.max_iter,
                     self.tol,
+                    self.solver,
                 )
             elif self.ties == "breslow":
 
-                coefs, loss = train_cox_ph_breslow_left_censorship(
+                coefs, loss, self.max_iter_seen_ = train_cox_ph_breslow_left_censorship(
                     X_strata,
                     events_strata,
                     n_unique_times_strata,
@@ -283,6 +291,7 @@ class CoxProportionalHazard(_SurvivalPredictBase):
                     coefs,
                     self.max_iter,
                     self.tol,
+                    self.solver,
                 )
 
             else:
@@ -304,7 +313,7 @@ class CoxProportionalHazard(_SurvivalPredictBase):
 
             if self.ties == "breslow":
 
-                coefs, loss = train_cox_ph_breslow(
+                coefs, loss, self.max_iter_seen_ = train_cox_ph_breslow(
                     X_strata,
                     events_strata,
                     n_unique_times_strata,
@@ -316,6 +325,7 @@ class CoxProportionalHazard(_SurvivalPredictBase):
                     coefs,
                     self.max_iter,
                     self.tol,
+                    self.solver,
                 )
 
             elif self.ties == "efron":
@@ -326,7 +336,7 @@ class CoxProportionalHazard(_SurvivalPredictBase):
                     n_unique_times_strata,
                 )
 
-                coefs, loss = train_cox_ph_efron(
+                coefs, loss, self.max_iter_seen_ = train_cox_ph_efron(
                     n_strata,
                     X_strata,
                     events_strata,
@@ -338,6 +348,7 @@ class CoxProportionalHazard(_SurvivalPredictBase):
                     coefs,
                     self.max_iter,
                     self.tol,
+                    self.solver,
                 )
             else:
                 raise ValueError("unknow ties")
@@ -466,6 +477,151 @@ class CoxProportionalHazard(_SurvivalPredictBase):
         check_is_fitted(self)
 
         return np.exp(np.dot(X, self.coef_))
+
+    def get_pymc_model(
+        self,
+        X: np.ndarray[tuple[int, int], np.dtype[np.float64]],
+        times: np.ndarray[tuple[int], np.dtype[np.int64]],
+        events: np.ndarray[tuple[int], np.dtype[np.bool_]],
+        labes_names: list[str] | np.ndarray[tuple[int], np.dtype[Any]] | None = None,
+        strata: Optional[np.ndarray[tuple[int], np.dtype[np.int64]]] = None,
+        times_start: Optional[np.ndarray[tuple[int], np.dtype[np.int64]]] = None,
+        coefs_sigma: float = 10,
+        empirical_bayes: bool = True,
+    ) -> "pymc.Model":
+        """
+        Returns a pymc model that is equivalent to the initialized Cox Proportional Hazards.
+        Allows for generating 'Markov chain Monte Carlo' traces for inference.
+
+        Parameters
+        ----------
+        X : array-like of shape (n_samples, n_features)
+            Training data.
+
+        times : array-like of shape (n_samples), dtype=np.int64
+            Point in time last observed.
+
+        events : array-like of shape (n_samples), dtype=np.bool_
+            Experianed event.
+
+        labes_names : list of str, default=None
+            Names for feature, allows for parameters associated with each
+            feature to be named accordingly.
+
+        strata : array-like of shape (n_samples,), dtype=np.int64, default=None
+            If passed in, associated strata for per observation.
+
+        times_start : array-like of shape (n_samples, dtype=np.int64), default=None
+            Starting point for observation. If not passed in, all times_start times are assumed to be 0.
+
+        coefs_sigma: float, default=10.0
+            Sigma of the normal distribution used for the coefficients.
+
+        empirical_bayes: bool, default=True.
+            If True and the class has been fit/trained, the initial coefficient values will be the trained coefficients.
+
+        Returns
+        -------
+        "pymc.Model"
+        """
+
+        use_left_censorship = times_start is not None
+
+        X, times, events = validate_survival_data(X, times, events)
+
+        if strata is not None:
+            strata = _as_int_np_array(strata, "strata")
+
+        if use_left_censorship:
+            times_start = validate_times_start_array(times_start, times)
+
+        self._max_time_observed = np.max(times)
+
+        if empirical_bayes and hasattr(self, "coef_"):
+            coefs = self.coef_
+        else:
+            coefs = None
+
+        if self.ties == "efron":
+            # get_l_div_m_stata_per_strata assumes sorted data
+            argsort = times.argsort(kind="mergesort")
+            times = times[argsort]
+            events = events[argsort]
+            X = X[argsort]
+            if use_left_censorship:
+                times_start = times_start[argsort]
+
+        (
+            n_strata,
+            _,
+            X_strata,
+            times_strata,
+            events_strata,
+            time_return_inverse_strata,
+            n_unique_times_strata,
+            _,
+            _,
+            time_start_return_inverse_strata,
+        ) = preprocess_data_for_cox_ph(
+            X, times, events, strata=strata, times_start=times_start
+        )
+
+        if self.ties == "efron":
+
+            l_div_m_stata = get_l_div_m_stata_per_strata(
+                events_strata,
+                times_strata,
+                time_return_inverse_strata,
+                n_unique_times_strata,
+            )
+
+        n_unique_times = max(n_unique_times_strata)
+
+        X = np.concat(X_strata)
+        times = np.concat(times_strata)
+        events = np.concat(events_strata)
+        time_end_return_inverse = np.concat(time_return_inverse_strata)
+
+        if self.ties == "efron":
+            l_div_m = np.concat(l_div_m_stata)
+        else:
+            l_div_m = None
+
+        if use_left_censorship:
+            time_start_return_inverse = np.concat(time_start_return_inverse_strata)
+        else:
+            time_start_return_inverse = None
+
+        if strata is None:
+            return get_cox_pymc_model_no_strata(
+                X,
+                time_end_return_inverse,
+                events,
+                n_unique_times,
+                time_start_return_inverse=time_start_return_inverse,
+                ties=self.ties,
+                column_names=labes_names,
+                l_div_m=l_div_m,
+                coefs_sigma=coefs_sigma,
+                alpha=self.alpha,
+                coefs_inital=coefs,
+            )
+        else:
+            return get_cox_pymc_model_with_strata(
+                X,
+                time_end_return_inverse,
+                events,
+                strata,
+                n_strata,
+                n_unique_times,
+                time_start_return_inverse=time_start_return_inverse,
+                ties=self.ties,
+                column_names=labes_names,
+                l_div_m=l_div_m,
+                coefs_sigma=coefs_sigma,
+                alpha=self.alpha,
+                coefs_inital=coefs,
+            )
 
 
 class ParametricDiscreteTimePH(_SurvivalPredictBase):
@@ -891,6 +1047,7 @@ class ParametricDiscreteTimePH(_SurvivalPredictBase):
         strata: Optional[np.ndarray[tuple[int], np.dtype[np.int64]]] = None,
         strata_names: list[str] | np.ndarray[tuple[int], np.dtype[Any]] | None = None,
         times_start: Optional[np.ndarray[tuple[int], np.dtype[np.int64]]] = None,
+        empirical_bayes: bool = True,
     ) -> "pymc.Model":
         """
         Return the underlying Pymc model.
@@ -923,6 +1080,9 @@ class ParametricDiscreteTimePH(_SurvivalPredictBase):
         times_start : array-like of shape (n_samples, dtype=np.int64), default=None
             Starting point for observation. If not passed in, all times_start times are assumed to be 0.
 
+        empirical_bayes: bool, default=True.
+            If True and the class has been fit/trained, the initial coefficient values will be the trained coefficients.
+
         Returns
         -------
         "pymc.Model"
@@ -931,6 +1091,11 @@ class ParametricDiscreteTimePH(_SurvivalPredictBase):
         base_hazard_pdf_callable, n_base_hazard_prams = (
             self._get_distribution_function_and_n_prams()
         )
+
+        if empirical_bayes and hasattr(self, "coef_"):
+            initval_coef = self.coef_
+        else:
+            initval_coef = None
 
         X, times, events = validate_survival_data(X, times, events)
         if strata is not None:
@@ -971,6 +1136,7 @@ class ParametricDiscreteTimePH(_SurvivalPredictBase):
             coef_prior_normal_sigma=self.coef_prior_normal_sigma,
             base_harard_prior_exponential_lam=self.base_harard_prior_exponential_lam,
             times_start=times_start,
+            initval_coef=initval_coef,
         )
 
 
@@ -1190,6 +1356,7 @@ class KNeighborsSurvival(_SurvivalPredictBase):
     """
     Survival curves implementing the k-nearest neighbors vote.
 
+    Builds Kaplan Meier curves on k-nearest neighbors.
     Parameters docs are taken from scikit-learn.
 
     Parameters
@@ -1962,7 +2129,9 @@ class CoxPHElasticNet(_SurvivalPredictBase):
     _parameter_constraints: dict = {
         "alpha": [Interval(Real, 0, None, closed="left")],
         "l1_ratio": [Interval(Real, 0, 1, closed="both")],
-        "max_iter": [Interval(Integral, 1, None, closed="left"), None],
+        "max_iter": [
+            Interval(Integral, 1, None, closed="left"),
+        ],
         "tol": [Interval(Real, 0, None, closed="left")],
     }
 
@@ -1971,7 +2140,7 @@ class CoxPHElasticNet(_SurvivalPredictBase):
         *,
         alpha: float = 0.0,
         l1_ratio: float = 0.5,
-        max_iter: Optional[int] = 100,
+        max_iter: int = 100,
         tol: float = 1e-9,
     ):
         self.alpha = alpha

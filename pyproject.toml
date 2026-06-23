@@ -1,6 +1,6 @@
 [project]
 name = "survivalpredict"
-version = "0.0.1"
+version = "0.0.2"
 description = "python survival analysis/survival curves, with a scikit-learn-like api."
 readme = "README.md"
 requires-python = ">=3.11"
