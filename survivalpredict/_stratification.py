@@ -217,19 +217,19 @@ def get_index_per_not_censored_times(time, events):
         not_censored = e == 1
 
         if t == last_time and not_censored:
+            indexes.append(current_index)
             current_index = current_index + 1
+            last_time = t
 
-        elif not_censored:
+        elif t != last_time:
             current_index = 0
+            indexes.append(current_index)
         else:
-            current_index = -1
-
+            indexes.append(0)    
+            
         last_time = t
 
-        indexes.append(current_index)
-
     return np.array(indexes)
-
 
 get_l_div_m_stata_per_strata_signature = nb.types.List(
     nb.types.Array(nb.types.float64, 1, "C")
@@ -260,14 +260,14 @@ def get_l_div_m_stata_per_strata(
 
         n_rows = len(events)
 
-        l_div_m_ = np.zeros(n_rows)
+        l_div_m_ = np.ones(n_rows)
 
         for i in range(n_rows):
             e_i = events[i]
             d_i = death_per_time[i]
             if d_i != 0 and e_i == 1:
                 i_i = index_per_not_censored_times[i]
-                l_div_m_[i] = i_i / d_i
+                l_div_m_[i] = i_i/d_i  #(i_i - 1.0) / d_i
 
         l_div_m_stata.append(l_div_m_)
 
