@@ -113,8 +113,7 @@ class CoxProportionalHazard(_SurvivalPredictBase):
         The maximum number of iterations used for newton and adaptive_newton methods.
 
     solver : {"newton", "adaptive_newton","BFGS","L-BFGS-B"}
-        Numerical solver to use. 'BFGS'/'L-BFGS-B' use less allocate less memory,
-        as they don't require calculating the hessian.
+        Numerical solver to use.
 
     ties : {"breslow", "efron"}, default='breslow'
         The method to handle ‘tied’ event times. Cox’s coefficients are
@@ -152,7 +151,7 @@ class CoxProportionalHazard(_SurvivalPredictBase):
     _parameter_constraints: dict = {
         "alpha": [Interval(Real, 0, None, closed="left")],
         "max_iter": [Interval(Integral, 1, None, closed="left")],
-        "method": [StrOptions({"newton", "adaptive_newton", "BFGS", "L-BFGS-B"})],
+        "solver": [StrOptions({"newton", "adaptive_newton", "BFGS", "L-BFGS-B"})],
         "ties": [StrOptions({"breslow", "efron"})],
         "tol": [Interval(Real, 0, None, closed="left")],
     }
