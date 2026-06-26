@@ -77,6 +77,7 @@ Survivalpredict makes some assumptions:
 
     General Walkthrough<_collections/notebooks/survivalpredict_walkthrough_demo.ipynb>
     Interfacing With Scikit-learn<_collections/notebooks/demo_sklearn_interface.ipynb>
+    Survival inference with PyMC<../_collections/notebooks/survival_inference_with_pymc.ipynb>
 
 .. toctree::
     :maxdepth: 2

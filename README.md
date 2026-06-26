@@ -20,6 +20,9 @@ There are also notebooks.
 
 <a href=https://github.com/pr38/survivalpredict/blob/main/notebooks/demo_sklearn_interface.ipynb>Demo for interfacing with scikit learn</a>
 
+<a href=https://github.com/pr38/survivalpredict/blob/main/notebooks/survival_inference_with_pymc.ipynb>Survival inference with PyMC</a>
+
+
 
 
 ## Estimators
