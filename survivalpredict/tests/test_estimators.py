@@ -39,11 +39,24 @@ def test_estimators(estimator, check_input, strata, times_start):
 
     kwargs = {}
     kwargs["check_input"] = check_input
+    predict_kwargs = {}
 
     if "strata" in fit_arg_keys:
         kwargs["strata"] = strata
+        predict_kwargs["strata"] = strata
 
     if "times_start" in fit_arg_keys:
         kwargs["times_start"] = times_start
 
+
     est.fit(X, times, events, **kwargs)
+
+    prediction = est.predict(X, **predict_kwargs)
+
+    hazard = est.predict_hazard(X, **predict_kwargs)
+    survival_from_hazard = est.convert_hazard_to_survival(hazard)
+
+    np.testing.assert_almost_equal(prediction,survival_from_hazard)
+
+    
+

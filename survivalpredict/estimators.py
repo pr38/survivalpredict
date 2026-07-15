@@ -73,6 +73,44 @@ __all__ = [
 
 
 class _SurvivalPredictBase(BaseEstimator):
+
+    def _validate_for_fit(self, X, times, events, strata=None, times_start=None):
+
+        X, times, events = validate_survival_data(X, times, events)
+
+        if strata is not None:
+            strata = _as_int_np_array(strata, "strata")
+
+        if times_start is not None:
+            times_start = validate_times_start_array(times_start, times)
+
+        return X, times, events, strata, times_start
+
+    def _validate_for_predict(self, X, strata=None, max_time=None):
+
+        X = _as_numeric_np_array(X)
+
+        if strata is not None:
+            strata = _as_int_np_array(strata, "strata")
+
+        if hasattr(self, "_uses_strata") and self._uses_strata is True:
+            if strata is None:
+                raise ValueError(
+                    "strata must be present if model is trained with strata"
+                )
+
+            strata, has_unseen_strata = map_new_strata(strata, self.seen_strata)
+
+            if has_unseen_strata:
+                raise ValueError("predict data has unseen strata")
+
+        if max_time is None:
+            max_time = self._max_time_observed
+        else:
+            max_time = _as_int(max_time, "max_time")
+
+        return X, strata, max_time
+
     def fit_predict(self, *args, **kwargs):
         """Fit model and Build survival curves."""
         predict_kwargs = kwargs.copy()
@@ -88,7 +126,78 @@ class _SurvivalPredictBase(BaseEstimator):
         return self.fit(*args, **kwargs).predict(X, **predict_kwargs)
 
 
-class CoxProportionalHazard(_SurvivalPredictBase):
+class _KaplanMeierBase:
+    @staticmethod
+    def convert_hazard_to_survival(
+        hazards: (
+            np.ndarray[tuple[int, int], np.dtype[np.float64]]
+            | np.ndarray[tuple[int], np.dtype[np.float64]]
+        ),
+    ) -> (
+        np.ndarray[tuple[int, int], np.dtype[np.float64]]
+        | np.ndarray[tuple[int], np.dtype[np.float64]]
+    ):
+        """
+        Convert hazards to survival curves.
+
+        Parameters
+        ----------
+        hazards : array-like, dtype=np.float64
+            Array of hazards.
+
+        Returns
+        -------
+        ndarray, dtype=np.float64
+            Survival curves generated from given hazards.
+        """
+        hazards = _as_numeric_np_array(hazards)
+
+        n_dims = len(hazards.shape)
+        if n_dims == 2:
+            return (1 - hazards).cumprod(axis=1)
+        elif n_dims == 1:
+            return (1 - hazards).cumprod()
+        else:
+            raise ValueError("hazards array should be 1 or 2 dimensional")
+
+
+class _ProportionalHazardBase:
+    @staticmethod
+    def convert_hazard_to_survival(
+        hazards: (
+            np.ndarray[tuple[int, int], np.dtype[np.float64]]
+            | np.ndarray[tuple[int], np.dtype[np.float64]]
+        ),
+    ) -> (
+        np.ndarray[tuple[int, int], np.dtype[np.float64]]
+        | np.ndarray[tuple[int], np.dtype[np.float64]]
+    ):
+        """
+        Convert hazards to survival curves.
+
+        Parameters
+        ----------
+        hazards : array-like, dtype=np.float64
+            Array of hazards.
+
+        Returns
+        -------
+        ndarray, dtype=np.float64
+            Survival curves generated from given hazards.
+        """
+        hazards = _as_numeric_np_array(hazards)
+
+        n_dims = len(hazards.shape)
+
+        if n_dims == 2:
+            return np.exp(-np.cumsum(hazards, axis=1))
+        elif n_dims == 1:
+            return np.exp(-np.cumsum(hazards))
+        else:
+            raise ValueError("hazards array should be 1 or 2 dimensional")
+
+
+class CoxProportionalHazard(_SurvivalPredictBase, _ProportionalHazardBase):
     """
     Cox Proportional Hazards.
 
@@ -214,13 +323,9 @@ class CoxProportionalHazard(_SurvivalPredictBase):
         use_left_censorship = times_start is not None
 
         if check_input:
-            X, times, events = validate_survival_data(X, times, events)
-
-            if strata is not None:
-                strata = _as_int_np_array(strata, "strata")
-
-            if use_left_censorship:
-                times_start = validate_times_start_array(times_start, times)
+            X, times, events, strata, times_start = self._validate_for_fit(
+                X, times, events, strata, times_start
+            )
 
         self._max_time_observed = np.max(times)
 
@@ -415,28 +520,11 @@ class CoxProportionalHazard(_SurvivalPredictBase):
 
         check_is_fitted(self)
 
-        if strata is not None:
-            strata = _as_int_np_array(strata, "strata")
-
-        if max_time is None:
-            max_time = self._max_time_observed
-        else:
-            max_time = _as_int(max_time, "max_time")
-
-        if self._uses_strata:
-            if strata is None:
-                raise ValueError(
-                    "strata must be present if model is trained with strata"
-                )
+        X, strata, max_time = self._validate_for_predict(X, strata, max_time)
 
         risk = np.exp(np.dot(X, self.coef_))
 
         if self._uses_strata:
-            strata, has_unseen_strata = map_new_strata(strata, self.seen_strata)
-
-            if has_unseen_strata:
-                raise ValueError("predict data has unseen strata")
-
             survival = self._breslow_base_survival[strata] ** risk[:, None]
             # to do, deal with case where stata key in predict was not present in train
         else:
@@ -474,6 +562,8 @@ class CoxProportionalHazard(_SurvivalPredictBase):
         """
 
         check_is_fitted(self)
+
+        X, _, __ = self._validate_for_predict(X, None, None)
 
         return np.exp(np.dot(X, self.coef_))
 
@@ -526,13 +616,9 @@ class CoxProportionalHazard(_SurvivalPredictBase):
 
         use_left_censorship = times_start is not None
 
-        X, times, events = validate_survival_data(X, times, events)
-
-        if strata is not None:
-            strata = _as_int_np_array(strata, "strata")
-
-        if use_left_censorship:
-            times_start = validate_times_start_array(times_start, times)
+        X, times, events, strata, times_start = self._validate_for_fit(
+            X, times, events, strata, times_start
+        )
 
         self._max_time_observed = np.max(times)
 
@@ -622,8 +708,57 @@ class CoxProportionalHazard(_SurvivalPredictBase):
                 coefs_inital=coefs,
             )
 
+    def predict_hazard(
+        self,
+        X: np.ndarray[tuple[int, int], np.dtype[np.float64]],
+        strata: Optional[np.ndarray[tuple[int], np.dtype[np.int64]]] = None,
+        max_time: Optional[int] = None,
+    ) -> np.ndarray[tuple[int, int], np.dtype[np.float64]]:
+        """
+        Build hazards on an array of vectors X.
 
-class ParametricDiscreteTimePH(_SurvivalPredictBase):
+        Parameters
+        ----------
+        X : array-like of shape (n_samples, n_features)
+            Predicting data.
+
+        strata : array-like of shape (n_samples,), dtype=np.int64, default=None
+            If passed in, associated strata for per observation.
+
+        max_time : int, default=None
+            Maximum time of built hazards. If none, maximum time is max
+            time seen on training data.
+
+        Returns
+        -------
+        ndarray of shape (n_samples, max_time), dtype=np.float64
+            The estimated hazards, the left-most column is the hazards at time 1,
+            and the right-most column ends at max_time.
+        """
+        check_is_fitted(self)
+
+        X, strata, max_time = self._validate_for_predict(X, strata, max_time)
+
+        risk = np.exp(np.dot(X, self.coef_))
+
+        if self._uses_strata:
+            hazard = self._breslow_base_hazard[strata] * risk[:, None]
+        else:
+            hazard = self._breslow_base_hazard * risk[:, None]
+
+        if max_time == self._max_time_observed:
+            return hazard
+        elif max_time < self._max_time_observed:
+            return hazard[:, :max_time]
+        else:  # max_time > self._max_time_observed
+            missing_dims = max_time - self._max_time_observed
+
+            impulted_values = np.zeros((X.shape[0], missing_dims))
+
+            return np.hstack([hazard, impulted_values])
+
+
+class ParametricDiscreteTimePH(_SurvivalPredictBase, _ProportionalHazardBase):
     """
     Parametric Discrete Time Proportional Hazards.
 
@@ -844,11 +979,9 @@ class ParametricDiscreteTimePH(_SurvivalPredictBase):
         """
 
         if check_input:
-            X, times, events = validate_survival_data(X, times, events)
-            if strata is not None:
-                strata = _as_int_np_array(strata, "strata")
-            if times_start is not None:
-                times_start = validate_times_start_array(times_start, times)
+            X, times, events, strata, times_start = self._validate_for_fit(
+                X, times, events, strata, times_start
+            )
 
         self._max_time_observed = np.max(times)
 
@@ -940,23 +1073,7 @@ class ParametricDiscreteTimePH(_SurvivalPredictBase):
 
         check_is_fitted(self)
 
-        if strata is not None:
-            strata = _as_int_np_array(strata, "strata")
-
-        if max_time is None:
-            max_time = self._max_time_observed
-        else:
-            max_time = _as_int(max_time, "max_time")
-
-        if self._uses_strata:
-            if strata is None:
-                raise ValueError(
-                    "strata must be present if model is trained with strata"
-                )
-            strata, has_unseen_strata = map_new_strata(strata, self.seen_strata)
-
-            if has_unseen_strata:
-                raise ValueError("predict data has unseen strata")
+        X, strata, max_time = self._validate_for_predict(X, strata, max_time)
 
         base_hazard_pdf_callable, _ = self._get_distribution_function_and_n_prams()
 
@@ -989,6 +1106,8 @@ class ParametricDiscreteTimePH(_SurvivalPredictBase):
         """
 
         check_is_fitted(self)
+
+        X, _, __ = self._validate_for_predict(X, None, None)
 
         return np.exp(np.dot(X, self.coef_))
 
@@ -1087,6 +1206,10 @@ class ParametricDiscreteTimePH(_SurvivalPredictBase):
         "pymc.Model"
         """
 
+        X, times, events, strata, times_start = self._validate_for_fit(
+            X, times, events, strata, times_start
+        )
+
         base_hazard_pdf_callable, n_base_hazard_prams = (
             self._get_distribution_function_and_n_prams()
         )
@@ -1095,10 +1218,6 @@ class ParametricDiscreteTimePH(_SurvivalPredictBase):
             initval_coef = self.coef_
         else:
             initval_coef = None
-
-        X, times, events = validate_survival_data(X, times, events)
-        if strata is not None:
-            strata = _as_int_np_array(strata, "strata")
 
         if max_time is None:
             if hasattr(self, "is_fitted_"):
@@ -1114,9 +1233,6 @@ class ParametricDiscreteTimePH(_SurvivalPredictBase):
             strata, _ = map_new_strata(strata, seen_strata)
         else:
             n_strata = None
-
-        if times_start is not None:
-            times_start = validate_times_start_array(times_start, times)
 
         return get_parametric_discrete_time_ph_model(
             X,
@@ -1138,8 +1254,52 @@ class ParametricDiscreteTimePH(_SurvivalPredictBase):
             initval_coef=initval_coef,
         )
 
+    def predict_hazard(
+        self,
+        X: np.ndarray[tuple[int, int], np.dtype[np.float64]],
+        strata: Optional[np.ndarray[tuple[int], np.dtype[np.int64]]] = None,
+        max_time: Optional[int] = None,
+    ) -> np.ndarray[tuple[int, int], np.dtype[np.float64]]:
+        """
+        Build hazards on an array of vectors X.
 
-class KaplanMeierSurvivalEstimator(_SurvivalPredictBase):
+        Parameters
+        ----------
+        X : array-like of shape (n_samples, n_features)
+            Predicting data.
+
+        strata : array-like of shape (n_samples,), dtype=np.int64, default=None
+            If passed in, associated strata for per observation.
+
+        max_time : int, default=None
+            Maximum time of built hazards. If none, maximum time is max
+            time seen on training data.
+
+        Returns
+        -------
+        ndarray of shape (n_samples, max_time), dtype=np.float64
+            The estimated hazards, the left-most column is the hazards at time 1,
+            and the right-most column ends at max_time.
+        """
+        check_is_fitted(self)
+
+        X, strata, max_time = self._validate_for_predict(X, strata, max_time)
+
+        base_hazard_pdf_callable, _ = self._get_distribution_function_and_n_prams()
+
+        return predict_parametric_discrete_time_ph_model(
+            X,
+            self.coef_,
+            self.base_hazard_prams_,
+            self._max_time_observed,
+            max_time,
+            base_hazard_pdf_callable,
+            strata,
+            return_hazard=True,
+        )
+
+
+class KaplanMeierSurvivalEstimator(_SurvivalPredictBase, _KaplanMeierBase):
     """
     The Kaplan-Meier estimate of the survival estimation.
 
@@ -1191,12 +1351,9 @@ class KaplanMeierSurvivalEstimator(_SurvivalPredictBase):
             uses_left_censorship = True
 
         if check_input:
-            X, times, events = validate_survival_data(X, times, events)
-
-            if strata is not None:
-                strata = _as_int_np_array(strata, "strata")
-            if uses_left_censorship:
-                times_start = validate_times_start_array(times_start, times)
+            X, times, events, _, times_start = self._validate_for_fit(
+                X, times, events, None, times_start
+            )
 
         self._max_time_observed = int(np.max(times))
 
@@ -1208,14 +1365,31 @@ class KaplanMeierSurvivalEstimator(_SurvivalPredictBase):
             self._uses_strata = False
             if uses_left_censorship == False:
                 self.kaplan_meier_survival_curve = get_kaplan_meier_survival_curve(
-                    events, times, self._max_time_observed
+                    events, times, self._max_time_observed, return_hazard=False
+                )
+                self.kaplan_meier_hazard = get_kaplan_meier_survival_curve(
+                    events, times, self._max_time_observed, return_hazard=True
                 )
             else:
                 self.kaplan_meier_survival_curve = (
                     get_kaplan_meier_survival_curve_with_left_censorship(
-                        events, times, times_start, self._max_time_observed
+                        events,
+                        times,
+                        times_start,
+                        self._max_time_observed,
+                        return_hazard=False,
                     )
                 )
+                self.kaplan_meier_hazard = (
+                    get_kaplan_meier_survival_curve_with_left_censorship(
+                        events,
+                        times,
+                        times_start,
+                        self._max_time_observed,
+                        return_hazard=True,
+                    )
+                )
+
         else:
             (
                 n_strata,
@@ -1245,6 +1419,8 @@ class KaplanMeierSurvivalEstimator(_SurvivalPredictBase):
                 (n_strata, self._max_time_observed)
             )
 
+            self.kaplan_meier_hazard = np.zeros((n_strata, self._max_time_observed))
+
             for s_i in range(n_strata):
                 if uses_left_censorship == False:
                     self.kaplan_meier_survival_curve[s_i] = (
@@ -1252,8 +1428,16 @@ class KaplanMeierSurvivalEstimator(_SurvivalPredictBase):
                             events_strata[s_i],
                             times_strata[s_i],
                             self._max_time_observed,
+                            return_hazard=False,
                         )
                     )
+                    self.kaplan_meier_hazard[s_i] = get_kaplan_meier_survival_curve(
+                        events_strata[s_i],
+                        times_strata[s_i],
+                        self._max_time_observed,
+                        return_hazard=True,
+                    )
+
                 else:
                     self.kaplan_meier_survival_curve[s_i] = (
                         get_kaplan_meier_survival_curve_with_left_censorship(
@@ -1261,6 +1445,16 @@ class KaplanMeierSurvivalEstimator(_SurvivalPredictBase):
                             times_strata[s_i],
                             times_start_strata[s_i],
                             self._max_time_observed,
+                            return_hazard=False,
+                        )
+                    )
+                    self.kaplan_meier_hazard[s_i] = (
+                        get_kaplan_meier_survival_curve_with_left_censorship(
+                            events_strata[s_i],
+                            times_strata[s_i],
+                            times_start_strata[s_i],
+                            self._max_time_observed,
+                            return_hazard=True,
                         )
                     )
 
@@ -1297,19 +1491,7 @@ class KaplanMeierSurvivalEstimator(_SurvivalPredictBase):
 
         check_is_fitted(self)
 
-        if strata is not None:
-            strata = _as_int_np_array(strata, "strata")
-
-        if max_time is None:
-            max_time = self._max_time_observed
-        else:
-            max_time = _as_int(max_time, "max_time")
-
-        if self._uses_strata:
-            if strata is None:
-                raise ValueError(
-                    "strata must be present if model is trained with strata"
-                )
+        X, strata, max_time = self._validate_for_predict(X, strata, max_time)
 
         kaplan_meier_survival_curve = self.kaplan_meier_survival_curve.copy()
 
@@ -1350,8 +1532,70 @@ class KaplanMeierSurvivalEstimator(_SurvivalPredictBase):
         else:
             return np.repeat(kaplan_meier_survival_curve[None, :], X.shape[0], axis=0)
 
+    def predict_hazard(
+        self,
+        X: np.ndarray[tuple[int, int], np.dtype[np.float64]],
+        strata: Optional[np.ndarray[tuple[int], np.dtype[np.int64]]] = None,
+        max_time: Optional[int] = None,
+    ) -> np.ndarray[tuple[int, int], np.dtype[np.float64]]:
+        """
+        Build hazards on an array of vectors X.
 
-class KNeighborsSurvival(_SurvivalPredictBase):
+        Parameters
+        ----------
+        X : array-like of shape (n_samples, n_features)
+            Predicting data.
+
+        strata : array-like of shape (n_samples,), dtype=np.int64, default=None
+            If passed in, associated strata for per observation.
+
+        max_time : int, default=None
+            Maximum time of built hazards. If none, maximum time is max
+            time seen on training data.
+
+        Returns
+        -------
+        ndarray of shape (n_samples, max_time), dtype=np.float64
+            The estimated hazards, the left-most column is the hazards at time 1,
+            and the right-most column ends at max_time.
+        """
+        check_is_fitted(self)
+
+        X, strata, max_time = self._validate_for_predict(X, strata, max_time)
+
+        kaplan_meier_hazard = self.kaplan_meier_hazard.copy()
+
+        if max_time < self._max_time_observed:
+            if self._uses_strata:
+                kaplan_meier_hazard = kaplan_meier_hazard[:, :max_time]
+            else:
+                kaplan_meier_hazard = kaplan_meier_hazard[:max_time]
+
+        elif max_time > self._max_time_observed:
+            missing_dims = max_time - self._max_time_observed
+
+            if self._uses_strata:
+                impulted_values = np.zeros((len(self.seen_strata), missing_dims))
+
+                kaplan_meier_hazard = np.hstack([kaplan_meier_hazard, impulted_values])
+
+            else:
+                impulted_values = np.zeros(missing_dims)
+
+                kaplan_meier_hazard = np.hstack([kaplan_meier_hazard, impulted_values])
+
+        if self._uses_strata:
+            strata, has_unseen_strata = map_new_strata(strata, self.seen_strata)
+
+            if has_unseen_strata:
+                raise ValueError("predict data has unseen strata")
+
+            return kaplan_meier_hazard[strata]
+        else:
+            return np.repeat(kaplan_meier_hazard[None, :], X.shape[0], axis=0)
+
+
+class KNeighborsSurvival(_SurvivalPredictBase, _KaplanMeierBase):
     """
     Survival curves implementing the k-nearest neighbors vote.
 
@@ -1482,12 +1726,9 @@ class KNeighborsSurvival(_SurvivalPredictBase):
         else:
             self._uses_times_start = False
 
-        if check_input:
-            X, times, events = validate_survival_data(X, times, events)
-            validate_times_start_array
-
-            if self._uses_times_start:
-                times_start = validate_times_start_array(times_start, times)
+        X, times, events, _, times_start = self._validate_for_fit(
+            X, times, events, None, times_start
+        )
 
         self._max_time_observed = int(np.max(times))
 
@@ -1540,14 +1781,9 @@ class KNeighborsSurvival(_SurvivalPredictBase):
 
         check_is_fitted(self)
 
-        if max_time is None:
-            max_time = self._max_time_observed
-        else:
-            max_time = _as_int(max_time, "max_time")
+        X, _, max_time = self._validate_for_predict(X, None, max_time)
 
         neighbors_indexes = self._nearestneighbors.kneighbors(X, return_distance=False)
-
-        X = _as_numeric_np_array(X)
 
         if self._uses_times_start:
             return build_kaplan_meier_survival_curve_from_neighbors_indexes_with_left_censoring(
@@ -1556,6 +1792,7 @@ class KNeighborsSurvival(_SurvivalPredictBase):
                 neighbors_indexes,
                 max_time,
                 self._times_start_in_memmory,
+                return_hazard=False,
             )
         else:
             return build_kaplan_meier_survival_curve_from_neighbors_indexes(
@@ -1563,10 +1800,59 @@ class KNeighborsSurvival(_SurvivalPredictBase):
                 self._events_in_memmory,
                 neighbors_indexes,
                 max_time,
+                return_hazard=False,
+            )
+
+    def predict_hazard(
+        self,
+        X: np.ndarray[tuple[int, int], np.dtype[np.float64]],
+        max_time: Optional[int] = None,
+    ) -> np.ndarray[tuple[int, int], np.dtype[np.float64]]:
+        """
+        Build hazards on an array of vectors X.
+
+        Parameters
+        ----------
+        X : array-like of shape (n_samples, n_features)
+            Predicting data.
+
+        max_time : int, default=None
+            Maximum time of built hazards. If none, maximum time is max
+            time seen on training data.
+
+        Returns
+        -------
+        ndarray of shape (n_samples, max_time), dtype=np.float64
+            The estimated hazards, the left-most column is the hazards at time 1,
+            and the right-most column ends at max_time.
+        """
+
+        check_is_fitted(self)
+
+        X, _, max_time = self._validate_for_predict(X, None, max_time)
+
+        neighbors_indexes = self._nearestneighbors.kneighbors(X, return_distance=False)
+
+        if self._uses_times_start:
+            return build_kaplan_meier_survival_curve_from_neighbors_indexes_with_left_censoring(
+                self._times_in_memmory,
+                self._events_in_memmory,
+                neighbors_indexes,
+                max_time,
+                self._times_start_in_memmory,
+                return_hazard=True,
+            )
+        else:
+            return build_kaplan_meier_survival_curve_from_neighbors_indexes(
+                self._times_in_memmory,
+                self._events_in_memmory,
+                neighbors_indexes,
+                max_time,
+                return_hazard=True,
             )
 
 
-class CoxNeuralNetPH(_SurvivalPredictBase):
+class CoxNeuralNetPH(_SurvivalPredictBase, _ProportionalHazardBase):
     """
     Artificial neural network proportional hazards Model.
 
@@ -1741,14 +2027,9 @@ class CoxNeuralNetPH(_SurvivalPredictBase):
 
         self._uses_strata = strata is not None
 
-        if check_input:
-            X, times, events = validate_survival_data(X, times, events)
-
-            if self._uses_strata:
-                strata = _as_int_np_array(strata, "strata")
-
-            if uses_left_censorship:
-                times_start = validate_times_start_array(times_start, times)
+        X, times, events, strata, times_start = self._validate_for_fit(
+            X, times, events, strata, times_start
+        )
 
         for i in self.hidden_layers:
             if type(i) != int:
@@ -1866,26 +2147,11 @@ class CoxNeuralNetPH(_SurvivalPredictBase):
 
         check_is_fitted(self)
 
-        if max_time is None:
-            max_time = self._max_time_observed
-        else:
-            max_time = _as_int(max_time, "max_time")
-
-        X = _as_numeric_np_array(X)
+        X, strata, max_time = self._validate_for_predict(X, strata, max_time)
 
         risk = get_relative_risk_from_cox_net_ph_weights(X, self.coef_)
 
         if self._uses_strata:
-            if strata is None:
-                raise ValueError(
-                    "strata must be present if model is trained with strata"
-                )
-
-            strata, has_unseen_strata = map_new_strata(strata, self.seen_strata)
-
-            if has_unseen_strata:
-                raise ValueError("predict data has unseen strata")
-
             base_survival = self._breslow_base_survival
 
             if max_time < self._max_time_observed:
@@ -1936,12 +2202,75 @@ class CoxNeuralNetPH(_SurvivalPredictBase):
 
         check_is_fitted(self)
 
-        X = np.array(X)
+        X, _, __ = self._validate_for_predict(X, None, None)
 
         return get_relative_risk_from_cox_net_ph_weights(X, self.coef_)
 
+    def predict_hazard(
+        self,
+        X: np.ndarray[tuple[int, int], np.dtype[np.float64]],
+        strata: Optional[np.ndarray[tuple[int], np.dtype[np.int64]]] = None,
+        max_time: Optional[int] = None,
+    ) -> np.ndarray[tuple[int, int], np.dtype[np.float64]]:
+        """
+        Build hazards on an array of vectors X.
 
-class AalenAdditiveHazard(_SurvivalPredictBase):
+        Parameters
+        ----------
+        X : array-like of shape (n_samples, n_features)
+            Predicting data.
+
+        strata : array-like of shape (n_samples,), dtype=np.int64, default=None
+            If passed in, associated strata for per observation.
+
+        max_time : int, default=None
+            Maximum time of built hazards. If none, maximum time is max
+            time seen on training data.
+
+        Returns
+        -------
+        ndarray of shape (n_samples, max_time), dtype=np.float64
+            The estimated hazards, the left-most column is the hazards at time 1,
+            and the right-most column ends at max_time.
+        """
+
+        check_is_fitted(self)
+
+        X, strata, max_time = self._validate_for_predict(X, strata, max_time)
+
+        risk = get_relative_risk_from_cox_net_ph_weights(X, self.coef_)
+
+        if self._uses_strata:
+            base_hazard = self._breslow_base_hazard
+
+            if max_time < self._max_time_observed:
+                base_hazard = base_hazard[:, :max_time]
+            elif max_time > self._max_time_observed:
+                missing_len = max_time - self._max_time_observed
+
+                impulted_values = np.repeat(0, missing_len, axis=0).T
+
+                base_hazard = np.hstack([base_hazard, impulted_values])
+
+            return base_hazard[strata] * risk[:, None]
+
+        else:
+
+            base_hazard = self._breslow_base_hazard
+
+            if max_time < self._max_time_observed:
+                base_hazard = base_hazard[:max_time]
+            elif max_time > self._max_time_observed:
+                missing_len = max_time - self._max_time_observed
+
+                impulted_values = np.repeat(0, missing_len, axis=0)
+
+                base_hazard = np.concat([base_hazard, impulted_values])
+
+            return base_hazard * risk[:, None]
+
+
+class AalenAdditiveHazard(_SurvivalPredictBase, _KaplanMeierBase):
     """
     Aalen Additive Hazards.
 
@@ -2020,23 +2349,20 @@ class AalenAdditiveHazard(_SurvivalPredictBase):
         """
 
         if check_input:
-            X, times, events = validate_survival_data(X, times, events)
+            X, times, events, _, times_start = self._validate_for_fit(
+                X, times, events, None, times_start
+            )
 
         if times_start is None:
             times_start = np.zeros_like(times, dtype=np.int64)
-        else:
-            times_start = validate_times_start_array(times_start, times)
 
         self._max_time_observed = int(np.max(times))
 
-        hazard_weights, hazard_weights_times = (
+        self._hazard_weights, self._hazard_weights_times = (
             _estimate_allen_additive_hazard_time_weights(
                 X, times, events, times_start, self.alpha
             )
         )
-
-        self._hazard_weights = hazard_weights
-        self._hazard_weights_times = hazard_weights_times
 
         self.is_fitted_ = True
 
@@ -2067,12 +2393,7 @@ class AalenAdditiveHazard(_SurvivalPredictBase):
 
         check_is_fitted(self)
 
-        X = _as_numeric_np_array(X)
-
-        if max_time is None:
-            max_time = self._max_time_observed
-        else:
-            max_time = _as_int(max_time, "max_time")
+        X, _, max_time = self._validate_for_predict(X, None, max_time)
 
         hazards = _generate_hazards_at_times_from_allen_additive_hazard_weights(
             X, self._hazard_weights, self._hazard_weights_times, max_time
@@ -2081,10 +2402,46 @@ class AalenAdditiveHazard(_SurvivalPredictBase):
         if self.clip_hazards:
             hazards = np.clip(hazards, 0.0, 1.0)
 
-        return np.exp(-hazards.cumsum(axis=1))
+        return (1 - hazards).cumprod(axis=1)
+
+    def predict_hazard(
+        self,
+        X: np.ndarray[tuple[int, int], np.dtype[np.float64]],
+        max_time: Optional[int] = None,
+    ) -> np.ndarray[tuple[int, int], np.dtype[np.float64]]:
+        """
+        Build hazards on an array of vectors X.
+
+        Parameters
+        ----------
+        X : array-like of shape (n_samples, n_features)
+            Predicting data.
+
+        max_time : int, default=None
+            Maximum time of built hazards. If none, maximum time is max
+            time seen on training data.
+
+        Returns
+        -------
+        ndarray of shape (n_samples, max_time), dtype=np.float64
+            The estimated hazards, the left-most column is the hazards at time 1,
+            and the right-most column ends at max_time.
+        """
+        check_is_fitted(self)
+
+        X, _, max_time = self._validate_for_predict(X, None, max_time)
+
+        hazards = _generate_hazards_at_times_from_allen_additive_hazard_weights(
+            X, self._hazard_weights, self._hazard_weights_times, max_time
+        )
+
+        if self.clip_hazards:
+            hazards = np.clip(hazards, 0.0, 1.0)
+
+        return hazards
 
 
-class CoxPHElasticNet(_SurvivalPredictBase):
+class CoxPHElasticNet(_SurvivalPredictBase, _ProportionalHazardBase):
     """
     Cox Proportional Hazards with Elastic Net penalty and feature shrinkage.
 
@@ -2185,9 +2542,9 @@ class CoxPHElasticNet(_SurvivalPredictBase):
         use_left_censorship = times_start is not None
 
         if check_input:
-            X, times, events = validate_survival_data(X, times, events)
-            if use_left_censorship:
-                times_start = validate_times_start_array(times_start, times)
+            X, times, events, _, times_start = self._validate_for_fit(
+                X, times, events, None, times_start
+            )
 
         self._max_time_observed = np.max(times)
 
@@ -2246,10 +2603,7 @@ class CoxPHElasticNet(_SurvivalPredictBase):
 
         check_is_fitted(self)
 
-        if max_time is None:
-            max_time = self._max_time_observed
-        else:
-            max_time = _as_int(max_time, "max_time")
+        X, _, max_time = self._validate_for_predict(X, None, max_time)
 
         risk = np.exp(np.dot(X, self.coef_))
 
@@ -2288,4 +2642,48 @@ class CoxPHElasticNet(_SurvivalPredictBase):
 
         check_is_fitted(self)
 
+        X, _, __ = self._validate_for_predict(X, None, None)
+
         return np.exp(np.dot(X, self.coef_))
+
+    def predict_hazard(
+        self,
+        X: np.ndarray[tuple[int, int], np.dtype[np.float64]],
+        max_time: Optional[int] = None,
+    ) -> np.ndarray[tuple[int, int], np.dtype[np.float64]]:
+        """
+        Build hazards on an array of vectors X.
+
+        Parameters
+        ----------
+        X : array-like of shape (n_samples, n_features)
+            Predicting data.
+
+        max_time : int, default=None
+            Maximum time of built hazards. If none, maximum time is max
+            time seen on training data.
+
+        Returns
+        -------
+        ndarray of shape (n_samples, max_time), dtype=np.float64
+            The estimated hazards, the left-most column is the hazards at time 1,
+            and the right-most column ends at max_time.
+        """
+        check_is_fitted(self)
+
+        risk = np.exp(np.dot(X, self.coef_))
+
+        X, _, max_time = self._validate_for_predict(X, None, max_time)
+
+        hazard = self._breslow_base_hazard * risk[:, None]
+
+        if max_time == self._max_time_observed:
+            return hazard
+        elif max_time < self._max_time_observed:
+            return hazard[:, :max_time]
+        else:  # max_time > self._max_time_observed
+            missing_dims = max_time - self._max_time_observed
+
+            impulted_values = np.zeros((X.shape[0], missing_dims))
+
+            return np.hstack([hazard, impulted_values])

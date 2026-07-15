@@ -7,6 +7,7 @@ _get_kaplan_meier_survival_curve_signature = nb.types.Array(
     nb.types.Array(nb.types.boolean, 1, "C", False, aligned=True),
     nb.types.Array(nb.types.int64, 1, "C", False, aligned=True),
     nb.types.int64,
+    nb.types.boolean,
 )
 
 
@@ -15,6 +16,7 @@ def get_kaplan_meier_survival_curve(
     events: np.ndarray[tuple[int], np.dtype[np.bool_]],
     times: np.ndarray[tuple[int], np.dtype[np.int64]],
     max_time: int,
+    return_hazard: bool = False,
 ) -> np.ndarray[tuple[int], np.dtype[np.float64]]:
 
     times = times - 1
@@ -34,18 +36,27 @@ def get_kaplan_meier_survival_curve(
     )
     hazard_at_step = np.where(death_per_step != 0, hazard_at_step, 0)
 
-    survival_curve = (1 - hazard_at_step).cumprod()
+    if return_hazard:
+        output = hazard_at_step
+    else: #return survival
+        output = (1 - hazard_at_step).cumprod()
 
-    if len(survival_curve) > max_time:
-        survival_curve = survival_curve[:max_time]
-    elif len(survival_curve) < max_time:
-        missing_dims = max_time - len(survival_curve)
 
-        impulted_values = np.repeat(survival_curve[-1], missing_dims)
+    if len(output) > max_time:
+        output = output[:max_time]
+    elif len(output) < max_time:
+        missing_dims = max_time - len(output)
 
-        survival_curve = np.hstack((survival_curve, impulted_values))
+        if return_hazard:
+            impulted_values = np.repeat(0.0, missing_dims)
 
-    return survival_curve
+        else: #return survival
+            impulted_values = np.repeat(output[-1], missing_dims)
+        
+
+        output = np.hstack((output, impulted_values))
+
+    return output
 
 
 get_kaplan_meier_survival_curve_with_left_censorship_signature_ = nb.types.Array(
@@ -55,6 +66,7 @@ get_kaplan_meier_survival_curve_with_left_censorship_signature_ = nb.types.Array
     nb.types.Array(nb.types.int64, 1, "C", False, aligned=True),
     nb.types.Array(nb.types.int64, 1, "C", False, aligned=True),
     nb.types.int64,
+    nb.types.boolean,
 )
 
 
@@ -64,6 +76,7 @@ def get_kaplan_meier_survival_curve_with_left_censorship(
     times: np.ndarray[tuple[int], np.dtype[np.int64]],
     times_start: np.ndarray[tuple[int], np.dtype[np.int64]],
     max_time: int,
+    return_hazard: bool = False,
 ) -> np.ndarray[tuple[int], np.dtype[np.float64]]:
 
     bin_length = times.max() + 1
@@ -78,16 +91,23 @@ def get_kaplan_meier_survival_curve_with_left_censorship(
 
     hazard_at_step = death_per_step / at_risk_per_step
 
-    hazard_at_step = np.where(death_per_step != 0, hazard_at_step, 0)
-    survival_curve = np.cumprod(1 - hazard_at_step)
+    if return_hazard:
+        output = hazard_at_step
+    else: #return survival
+        hazard_at_step = np.where(death_per_step != 0, hazard_at_step, 0)
+        output = np.cumprod(1 - hazard_at_step) #survival_curve
 
-    if len(survival_curve) > max_time + 1:
-        survival_curve = survival_curve[: max_time + 1]
-    elif len(survival_curve) < max_time + 1:
-        missing_dims = max_time - len(survival_curve)
 
-        impulted_values = np.repeat(survival_curve[-1], missing_dims + 1)
+    if len(output) > max_time + 1:
+        output = output[: max_time + 1]
+    elif len(output) < max_time + 1:
+        missing_dims = max_time - len(output)
 
-        survival_curve = np.hstack((survival_curve, impulted_values))
+        if return_hazard:
+            impulted_values = np.repeat(0.0, missing_dims + 1)
+        else: #return survival
+            impulted_values = np.repeat(output[-1], missing_dims + 1)
 
-    return survival_curve[1:]  # exclude time 0
+        output = np.hstack((output, impulted_values))
+
+    return output[1:]  # exclude time 0
