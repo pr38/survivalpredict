@@ -50,7 +50,7 @@ from ._mtlr import (
     train_mtlr,
     predict_mtlr,
     predict_hazard_mtlr,
-    convert_hazard_to_survival_mtl,
+    convert_hazard_to_survival_mtlr,
 )
 from ._neighbors import (
     build_kaplan_meier_survival_curve_from_neighbors_indexes,
@@ -75,6 +75,7 @@ __all__ = [
     "CoxNeuralNetPH",
     "AalenAdditiveHazard",
     "CoxPHElasticNet",
+    "MultiTaskLogisticRegression",
 ]
 
 
@@ -2697,19 +2698,21 @@ class CoxPHElasticNet(_SurvivalPredictBase, _ProportionalHazardBase):
 
 class MultiTaskLogisticRegression(_SurvivalPredictBase):
     """
-    Multi Task Logistic Regression.
+    Multi-Task Logistic Regression.
 
-    Multi-Task Logistic Regression is a survival model for time-varying
+    Multi-Task Logistic Regression is a survival model with time-varying
     coefficients. Each interval of time and feature has an associated
     coefficient. Each interval of time’s estimation of survival is dependent
-    on the previous estimations of survival[1]. The 'brown loss' for discrete
+    on the previous estimation of survival[1]. The 'brown loss' for discrete
     time survival is used[2] instead of the log-likelihood of the original paper.
     The c1 and c2 regulation from the Yu et al[1] paper is present.
+
+    Implemented with Jax.
 
     Parameters
     ----------
     c1 : float, default=0.0
-        Regulation penatly for smoothing the effects of a feature across time.
+        Regulation penatly for smoothing the effects of features across time.
 
     c2 : float, default=0.0
         Penatly for l2 regularization of weights.
@@ -2939,4 +2942,4 @@ class MultiTaskLogisticRegression(_SurvivalPredictBase):
         """
         hazards = _as_numeric_np_array(hazards)
 
-        return convert_hazard_to_survival_mtl(hazards)
+        return convert_hazard_to_survival_mtlr(hazards)

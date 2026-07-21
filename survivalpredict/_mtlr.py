@@ -51,7 +51,7 @@ def train_mtlr(
         not_left_censored = ~times_of_intrest <= times_start[:, np.newaxis]
         not_censored_at_times = np.logical_and(not_censored_at_times, not_left_censored)
 
-    weights = np.random.rand(times_max, n_cols)
+    weights = np.zeros((times_max, n_cols))
 
     # generating the grad function in main scope will trigger unnecessary compute on import
     get_mtlr_grad = jax.grad(get_mtlr_loss)
@@ -109,7 +109,7 @@ def predict_hazard_mtlr(
     return 1 - (1 + np.exp(product)) ** -1
 
 
-def convert_hazard_to_survival_mtl(
+def convert_hazard_to_survival_mtlr(
     hazards: np.ndarray[tuple[int, int], np.dtype[np.float64]],
 ) -> np.ndarray[tuple[int, int], np.dtype[np.float64]]:
 
