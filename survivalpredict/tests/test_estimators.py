@@ -4,13 +4,20 @@ import numpy as np
 import pytest
 
 from ..datasets import load_iranian_telecom_churn
-from ..estimators import (AalenAdditiveHazard, CoxNeuralNetPH, CoxPHElasticNet,
-                          CoxProportionalHazard, KaplanMeierSurvivalEstimator,
-                          KNeighborsSurvival, ParametricDiscreteTimePH)
+from ..estimators import (
+    AalenAdditiveHazard,
+    CoxNeuralNetPH,
+    CoxPHElasticNet,
+    CoxProportionalHazard,
+    KaplanMeierSurvivalEstimator,
+    KNeighborsSurvival,
+    ParametricDiscreteTimePH,
+    MultiTaskLogisticRegression,
+)
 
 data = load_iranian_telecom_churn()
 
-X = np.ascontiguousarray( data["X"])
+X = np.ascontiguousarray(data["X"])
 times = data["times"].astype(np.int64)
 events = data["events"].astype(np.bool_)
 times_start = np.zeros(X.shape[0]).astype(np.int64)
@@ -27,6 +34,7 @@ strata = np.random.randint(0, 2, X.shape[0])
         CoxNeuralNetPH,
         AalenAdditiveHazard,
         CoxPHElasticNet,
+        MultiTaskLogisticRegression,
     ],
 )
 @pytest.mark.parametrize("check_input", [True, False])
@@ -48,7 +56,6 @@ def test_estimators(estimator, check_input, strata, times_start):
     if "times_start" in fit_arg_keys:
         kwargs["times_start"] = times_start
 
-
     est.fit(X, times, events, **kwargs)
 
     prediction = est.predict(X, **predict_kwargs)
@@ -56,7 +63,4 @@ def test_estimators(estimator, check_input, strata, times_start):
     hazard = est.predict_hazard(X, **predict_kwargs)
     survival_from_hazard = est.convert_hazard_to_survival(hazard)
 
-    np.testing.assert_almost_equal(prediction,survival_from_hazard)
-
-    
-
+    np.testing.assert_almost_equal(prediction, survival_from_hazard)

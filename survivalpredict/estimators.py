@@ -46,6 +46,12 @@ from ._discrete_time_ph_estimation import (
     predict_parametric_discrete_time_ph_model,
     train_parametric_discrete_time_ph_model,
 )
+from ._mtlr import (
+    train_mtlr,
+    predict_mtlr,
+    predict_hazard_mtlr,
+    convert_hazard_to_survival_mtl,
+)
 from ._neighbors import (
     build_kaplan_meier_survival_curve_from_neighbors_indexes,
     build_kaplan_meier_survival_curve_from_neighbors_indexes_with_left_censoring,
@@ -2687,3 +2693,225 @@ class CoxPHElasticNet(_SurvivalPredictBase, _ProportionalHazardBase):
             impulted_values = np.zeros((X.shape[0], missing_dims))
 
             return np.hstack([hazard, impulted_values])
+
+
+class MultiTaskLogisticRegression(_SurvivalPredictBase):
+    """
+    Multi Task Logistic Regression.
+
+    Multi-Task Logistic Regression is a survival model for time-varying
+    coefficients. Each interval of time and feature has an associated
+    coefficient. Each interval of time’s estimation of survival is dependent
+    on the previous estimations of survival[1]. The 'brown loss' for discrete
+    time survival is used[2] instead of the log-likelihood of the original paper.
+    The c1 and c2 regulation from the Yu et al[1] paper is present.
+
+    Parameters
+    ----------
+    c1 : float, default=0.0
+        Regulation penatly for smoothing the effects of a feature across time.
+
+    c2 : float, default=0.0
+        Penatly for l2 regularization of weights.
+
+    fit_intercept : bool, default=True
+        If true, adds constants to X array.
+
+    solver : {"BFGS","L-BFGS-B"}, default='L-BFGS-B'
+        Numerical solver to use.
+
+    Attributes
+    ----------
+    coef_ : ndarray of shape (n_features,max_time)
+        Coefficients of the model.
+
+    loss_ : float
+        Loss at point the point of convergence.
+
+    max_iter_seen_ : int
+        Number of training iterations point of convergence.
+
+    References
+    ----------
+
+    [1] Yu, Chun-Nam & Greiner, Russ & Lin, Hsiu-Chin & Baracos, Vickie. (2012).
+    Learning Patient-Specific Cancer Survival Distributions as a Sequence of
+    Dependent Regressors.
+
+    [2] Suresh K, Severn C, Ghosh D. Survival prediction models: an
+    introduction to discrete-time modeling. BMC Med Res Methodol. 2022 Jul
+    26;22(1):207. doi: 10.1186/s12874-022-01679-6. PMID: 35883032; PMCID:
+    PMC9316420.
+    """
+
+    _parameter_constraints: dict = {
+        "c1": [Interval(Real, 0, None, closed="left")],
+        "c2": [Interval(Real, 0, None, closed="left")],
+        "fit_intercept": ["boolean"],
+        "solver": [StrOptions({"BFGS", "L-BFGS-B"})],
+    }
+
+    def __init__(
+        self,
+        *,
+        c1: float = 0.0,
+        c2: float = 0.0,
+        fit_intercept: bool = True,
+        solver: Literal["BFGS", "L-BFGS-B"] = "L-BFGS-B",
+    ):
+        self.c1 = c1
+        self.c2 = c2
+        self.fit_intercept = fit_intercept
+        self.solver = solver
+
+    @_fit_context(prefer_skip_nested_validation=True)
+    def fit(
+        self,
+        X: np.ndarray[tuple[int, int], np.dtype[np.float64]],
+        times: np.ndarray[tuple[int], np.dtype[np.int64]],
+        events: np.ndarray[tuple[int], np.dtype[np.bool_]],
+        check_input: bool = True,
+        times_start: Optional[np.ndarray[tuple[int], np.dtype[np.int64]]] = None,
+    ):
+
+        if check_input:
+            X, times, events, _, times_start = self._validate_for_fit(
+                X, times, events, None, times_start
+            )
+
+        self._max_time_observed = np.max(times)
+
+        if self.fit_intercept:
+            intercept = np.ones((X.shape[0], 1))
+            X = np.hstack([intercept, X])
+
+        self.coef_, self.loss_, self.max_iter_seen_ = train_mtlr(
+            X,
+            times,
+            events,
+            times_start=times_start,
+            c1=self.c1,
+            c2=self.c2,
+            solver=self.solver,
+        )
+
+        return self
+
+    def predict(
+        self,
+        X: np.ndarray[tuple[int, int], np.dtype[np.float64]],
+        max_time: Optional[int] = None,
+    ) -> np.ndarray[tuple[int, int], np.dtype[np.float64]]:
+        """
+        Build survival curves on an array of vectors X.
+
+        Parameters
+        ----------
+        X : array-like of shape (n_samples, n_features)
+            Predicting data.
+
+        max_time : int, default=None
+            Maximum time of built survival curves. If none, maximum time is max
+            time seen on training data.
+
+        Returns
+        -------
+        ndarray of shape (n_samples, max_time), dtype=np.float64
+            The estimated survival curves, the left-most column is the
+            probability of survival at time 1, and the right-most column ends
+            at max_time.
+        """
+        X, _, max_time = self._validate_for_predict(X, None, max_time)
+
+        if self.fit_intercept:
+            intercept = np.ones((X.shape[0], 1))
+            X = np.hstack([intercept, X])
+
+        if max_time == self._max_time_observed:
+            return predict_mtlr(X, self.coef_)
+        elif max_time < self._max_time_observed:
+            return predict_mtlr(X, self.coef_[:max_time, :])
+        else:
+            missing_dims = max_time - self._max_time_observed
+
+            survival = predict_mtlr(X, self.coef_)
+
+            impulted_values = np.repeat(
+                survival[:, -1][np.newaxis], missing_dims, axis=0
+            ).T
+
+            return np.hstack([survival, impulted_values])
+
+    def predict_hazard(
+        self,
+        X: np.ndarray[tuple[int, int], np.dtype[np.float64]],
+        max_time: Optional[int] = None,
+    ) -> np.ndarray[tuple[int, int], np.dtype[np.float64]]:
+        """
+        Build hazards on an array of vectors X.
+
+        It should be noted that MTLR does not have a native notion of hazard.
+        What is presented here is a modified formula of MTLR, before
+        probabilities per time of survival are multiplied. It can function as
+        an equivalent to hazards; survival curves can also be built from it.
+
+        Parameters
+        ----------
+        X : array-like of shape (n_samples, n_features)
+            Predicting data.
+
+        max_time : int, default=None
+            Maximum time of built hazards. If none, maximum time is max
+            time seen on training data.
+
+        Returns
+        -------
+        ndarray of shape (n_samples, max_time), dtype=np.float64
+            The estimated hazards, the left-most column is the hazards at time 1,
+            and the right-most column ends at max_time.
+        """
+
+        X, _, max_time = self._validate_for_predict(X, None, max_time)
+
+        if self.fit_intercept:
+            intercept = np.ones((X.shape[0], 1))
+            X = np.hstack([intercept, X])
+
+        if max_time == self._max_time_observed:
+            return predict_hazard_mtlr(X, self.coef_)
+        elif max_time < self._max_time_observed:
+            return predict_hazard_mtlr(X, self.coef_[:max_time, :])
+        else:
+            hazard = predict_hazard_mtlr(X, self.coef_[:max_time, :])
+            missing_dims = max_time - self._max_time_observed
+
+            impulted_values = np.zeros((X.shape[0], missing_dims))
+
+            return np.hstack([hazard, impulted_values])
+
+    @staticmethod
+    def convert_hazard_to_survival(
+        hazards: (
+            np.ndarray[tuple[int, int], np.dtype[np.float64]]
+            | np.ndarray[tuple[int], np.dtype[np.float64]]
+        ),
+    ) -> (
+        np.ndarray[tuple[int, int], np.dtype[np.float64]]
+        | np.ndarray[tuple[int], np.dtype[np.float64]]
+    ):
+        """
+        Convert hazards to survival curves.
+
+        Parameters
+        ----------
+        hazards : array-like, dtype=np.float64
+            Array of hazards.
+
+        Returns
+        -------
+        ndarray, dtype=np.float64
+            Survival curves generated from given hazards.
+        """
+        hazards = _as_numeric_np_array(hazards)
+
+        return convert_hazard_to_survival_mtl(hazards)
