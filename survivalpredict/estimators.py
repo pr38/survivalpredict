@@ -2773,6 +2773,31 @@ class MultiTaskLogisticRegression(_SurvivalPredictBase):
         check_input: bool = True,
         times_start: Optional[np.ndarray[tuple[int], np.dtype[np.int64]]] = None,
     ):
+        """
+        Fit model.
+
+        Parameters
+        ----------
+        X : array-like of shape (n_samples, n_features)
+            Training data.
+
+        times : array-like of shape (n_samples), dtype=np.int64
+            Point in time last observed.
+
+        events : array-like of shape (n_samples), dtype=np.bool_
+            Experianed event.
+
+        check_input : bool, default=True
+            If True, validates and casts inputs.
+
+        times_start : array-like of shape (n_samples, dtype=np.int64), default=None
+            Starting point for observation. If not passed in, all times_start times are assumed to be 0.
+
+        Returns
+        -------
+        object
+            Fitted Estimator.
+        """
 
         if check_input:
             X, times, events, _, times_start = self._validate_for_fit(
