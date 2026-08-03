@@ -80,6 +80,12 @@ The estimators implemented in the `survivalpredict.estimators` sub-module.
         </td>
         <td>No</td>
         <td>Yes</td>
+    </tr>
+        <td>MultiTaskLogisticRegression</td>
+        <td> A survival model with time-varying coefficients. Each interval of time and feature has an associate coefficient. Each interval of time’s estimation of survival is dependent on the previous estimation of survival. Implemented using Jax.  </td>
+        <td>No</td>
+        <td>Yes</td>
+    </tr>
 </table>
 
 
