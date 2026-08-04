@@ -1,13 +1,15 @@
 import itertools
 import warnings
+from math import ceil
 from numbers import Integral, Real
-from typing import Any, Callable, Literal, Optional
+from typing import Any, Callable, Literal, Optional, Union
 
 import numpy as np
 from sklearn.base import BaseEstimator, _fit_context
 from sklearn.neighbors import NearestNeighbors
 from sklearn.neighbors._base import VALID_METRICS as VALID_METRICS_KNN
-from sklearn.utils._param_validation import Interval, StrOptions
+from sklearn.utils import check_random_state
+from sklearn.utils._param_validation import HasMethods, Interval, RealNotInt, StrOptions
 from sklearn.utils.validation import check_is_fitted
 
 from ._allen_additive import (
@@ -47,18 +49,21 @@ from ._discrete_time_ph_estimation import (
     train_parametric_discrete_time_ph_model,
 )
 from ._mtlr import (
-    train_mtlr,
-    predict_mtlr,
-    predict_hazard_mtlr,
     convert_hazard_to_survival_mtlr,
+    predict_hazard_mtlr,
+    predict_mtlr,
+    train_mtlr,
 )
 from ._neighbors import (
     build_kaplan_meier_survival_curve_from_neighbors_indexes,
     build_kaplan_meier_survival_curve_from_neighbors_indexes_with_left_censoring,
 )
 from ._nonparametric import (
+    convert_kaplan_meier_survival_curve_to_hazards,
     get_kaplan_meier_survival_curve,
     get_kaplan_meier_survival_curve_with_left_censorship,
+    get_kaplan_meier_survival_curve_with_weights,
+    get_kaplan_meier_survival_curve_with_weights_and_left_censorship,
 )
 from ._stratification import (
     get_l_div_m_stata_per_strata,
@@ -66,6 +71,7 @@ from ._stratification import (
     preprocess_data_for_cox_ph,
     split_and_preprocess_data_by_strata,
 )
+from ._tree import get_survival_tree
 
 __all__ = [
     "CoxProportionalHazard",
@@ -1733,9 +1739,10 @@ class KNeighborsSurvival(_SurvivalPredictBase, _KaplanMeierBase):
         else:
             self._uses_times_start = False
 
-        X, times, events, _, times_start = self._validate_for_fit(
-            X, times, events, None, times_start
-        )
+        if check_input:
+            X, times, events, _, times_start = self._validate_for_fit(
+                X, times, events, None, times_start
+            )
 
         self._max_time_observed = int(np.max(times))
 
@@ -2943,3 +2950,234 @@ class MultiTaskLogisticRegression(_SurvivalPredictBase):
         hazards = _as_numeric_np_array(hazards)
 
         return convert_hazard_to_survival_mtlr(hazards)
+
+
+class DecisionTreeSurvival(_SurvivalPredictBase, _KaplanMeierBase):
+    _parameter_constraints: dict = {
+        "criterion": [
+            StrOptions(
+                {"integrated_brier_score_administrative", "wasserstein_distance"}
+            )
+        ],
+        "splitter": [StrOptions({"best"})],  # 'random' to-do
+        "max_depth": [Interval(Integral, 1, None, closed="left"), None],
+        "min_samples_split": [
+            Interval(Integral, 2, None, closed="left"),
+        ],
+        "min_samples_leaf": [
+            Interval(Integral, 1, None, closed="left"),
+        ],
+        "min_weight_fraction_leaf": [Interval(Real, 0.0, 0.5, closed="both")],
+        "max_features": [
+            Interval(Integral, 1, None, closed="left"),
+            Interval(RealNotInt, 0.0, 1.0, closed="right"),
+            StrOptions({"sqrt", "log2"}),
+            None,
+        ],
+        "random_state": ["random_state"],
+        "max_leaf_nodes": [Interval(Integral, 2, None, closed="left"), None],
+        "min_impurity_decrease": [Interval(Real, 0.0, None, closed="left")],
+        "ccp_alpha": [Interval(Real, 0.0, None, closed="left")],
+    }
+
+    def __init__(
+        self,
+        *,
+        criterion: Literal[
+            "integrated_brier_score_administrative", "wasserstein_distance"
+        ] = "wasserstein_distance",
+        splitter: Literal["best"] = "best",
+        max_depth: Optional[int] = None,
+        min_samples_split: int = 2,
+        min_samples_leaf: int = 1,
+        min_weight_fraction_leaf: float = 0.0,
+        max_features: Union[None, int, float, Literal["sqrt"], Literal["log2"]] = None,
+        random_state: Optional[int] = None,
+        max_leaf_nodes: Optional[int] = None,
+        min_impurity_decrease: float = 0.0,
+        ccp_alpha: float = 0.0,
+    ):
+
+        self.criterion = criterion
+        self.splitter = splitter
+        self.max_depth = max_depth
+        self.min_samples_split = min_samples_split
+        self.min_samples_leaf = min_samples_leaf
+        self.min_weight_fraction_leaf = min_weight_fraction_leaf
+        self.max_features = max_features
+        self.max_leaf_nodes = max_leaf_nodes
+        self.random_state = random_state
+        self.min_impurity_decrease = min_impurity_decrease
+        self.ccp_alpha = ccp_alpha
+
+    @_fit_context(prefer_skip_nested_validation=True)
+    def fit(
+        self,
+        X: np.ndarray[tuple[int, int], np.dtype[np.float64]],
+        times: np.ndarray[tuple[int], np.dtype[np.int64]],
+        events: np.ndarray[tuple[int], np.dtype[np.bool_]],
+        check_input: bool = True,
+    ):
+        if check_input:
+            X, times, events, _, __ = self._validate_for_fit(
+                X, times, events, None, None
+            )
+
+        self._max_time_observed = np.max(times)
+
+        check_random_state(self.random_state)
+        if self.random_state == None:
+            random_state = -1
+        else:
+            random_state = self.random_state
+
+        crit_code = 0 if self.criterion == "wasserstein_distance" else 1
+
+        n_samples, n_features = X.shape
+
+        self.n_features_seen_ = n_features
+
+        # deducting parameters
+        # primary taken from sklearn's BaseDecisionTree
+        max_depth = -1 if self.max_depth is None else self.max_depth
+
+        if isinstance(self.min_samples_leaf, Integral):
+            min_samples_leaf = self.min_samples_leaf
+        else:  # float
+            min_samples_leaf = int(ceil(self.min_samples_leaf * n_samples))
+
+        if isinstance(self.min_samples_split, Integral):
+            min_samples_split = self.min_samples_split
+        else:  # float
+            min_samples_split = int(ceil(self.min_samples_split * n_samples))
+            min_samples_split = max(2, min_samples_split)
+
+        min_samples_split = max(min_samples_split, 2 * min_samples_leaf)
+
+        if self.max_features is None:
+            max_features = -1
+        elif self.max_features == "sqrt":
+            max_features = max(1, int(np.sqrt(n_features)))
+        elif self.max_features == "log2":
+            max_features = max(1, int(np.log2(n_features)))
+        elif isinstance(self.max_features, Integral):
+            max_features = self.max_features
+        else:  # float
+            max_features = max(1, int(self.max_features * n_features))
+
+        max_leaf_nodes = -1 if self.max_leaf_nodes is None else self.max_leaf_nodes
+
+        min_weight_leaf = (
+            0.0
+            if self.min_weight_fraction_leaf is None
+            else float(self.min_weight_fraction_leaf)
+        )
+
+        min_impurity_decrease = (
+            0.0
+            if self.min_impurity_decrease is None
+            else float(self.min_impurity_decrease)
+        )
+
+        ccp_alpha = 0.0 if self.ccp_alpha is None else float(self.ccp_alpha)
+
+        weights = np.ones(n_samples)
+
+        self.tree_ = get_survival_tree(
+            X,
+            times,
+            events,
+            weights,
+            min_samples_leaf,
+            max_depth,
+            min_samples_split,
+            crit_code,
+            min_impurity_decrease,
+            min_weight_leaf,
+            max_features,
+            max_leaf_nodes,
+            random_state,
+            ccp_alpha,
+        )
+
+        self.is_fitted_ = True
+        return self
+
+    def predict(
+        self,
+        X: np.ndarray[tuple[int, int], np.dtype[np.float64]],
+        max_time: Optional[int] = None,
+    ) -> np.ndarray[tuple[int, int], np.dtype[np.float64]]:
+        """
+        Build survival curves on an array of vectors X.
+
+        Parameters
+        ----------
+        X : array-like of shape (n_samples, n_features)
+            Predicting data.
+
+        max_time : int, default=None
+            Maximum time of built survival curves. If none, maximum time is max
+            time seen on training data.
+
+        Returns
+        -------
+        ndarray of shape (n_samples, max_time), dtype=np.float64
+            The estimated survival curves, the left-most column is the probability of survival at time 1,
+            and the right-most column ends at max_time.
+        """
+
+        check_is_fitted(self)
+
+        X, _, max_time = self._validate_for_predict(X, None, max_time)
+
+        X = X.astype(np.float32)
+
+        survival = self.tree_.predict(X)
+
+        # exclude time 0, to be consistent with rest of the estimators
+        survival = survival[:, 1:]
+
+        if max_time == self._max_time_observed:
+            return survival
+        elif max_time < self._max_time_observed:
+            return survival[:, :max_time]
+        else:  # max_time > self._max_time_observed
+            missing_dims = max_time - self._max_time_observed
+
+            impulted_values = np.repeat(
+                survival[:, -1][np.newaxis], missing_dims, axis=0
+            ).T
+
+            return np.hstack([survival, impulted_values])
+
+    def predict_hazard(
+        self,
+        X: np.ndarray[tuple[int, int], np.dtype[np.float64]],
+        max_time: Optional[int] = None,
+    ) -> np.ndarray[tuple[int, int], np.dtype[np.float64]]:
+        """
+        Build hazards on an array of vectors X.
+
+        Parameters
+        ----------
+        X : array-like of shape (n_samples, n_features)
+            Predicting data.
+
+        max_time : int, default=None
+            Maximum time of built hazards. If none, maximum time is max
+            time seen on training data.
+
+        Returns
+        -------
+        ndarray of shape (n_samples, max_time), dtype=np.float64
+            The estimated hazards, the left-most column is the hazards at time 1,
+            and the right-most column ends at max_time.
+        """
+        check_is_fitted(self)
+
+        X, _, max_time = self._validate_for_predict(X, None, max_time)
+
+        survival = self.predict(X, max_time)
+
+        return convert_kaplan_meier_survival_curve_to_hazards(survival)
