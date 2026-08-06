@@ -5,14 +5,14 @@ from sklearn.tree._tree import Tree, _build_pruned_tree_ccp
 
 @nb.njit(
     nb.types.Array(nb.types.float64, 1, "C", False, aligned=True)(
-        nb.types.Array(nb.types.int64, 1, "C", False, aligned=True),
-        nb.types.Array(nb.types.int64, 1, "C", False, aligned=True),
+        nb.types.Array(nb.types.float64, 1, "C", False, aligned=True),
+        nb.types.Array(nb.types.float64, 1, "C", False, aligned=True),
     ),
     cache=True,
 )
 def get_km_curve_from_counts(
-    death_per_step: np.ndarray[tuple[int], np.dtype[np.int64]],
-    exit_per_step: np.ndarray[tuple[int], np.dtype[np.int64]],
+    death_per_step: np.ndarray[tuple[int], np.dtype[np.float64]],
+    exit_per_step: np.ndarray[tuple[int], np.dtype[np.float64]],
 ) -> np.ndarray[tuple[int], np.dtype[np.float64]]:
     right_censor_count_per_step = exit_per_step - death_per_step
 
@@ -30,49 +30,49 @@ def get_km_curve_from_counts(
 
 @nb.njit(
     nb.types.float64(
-        nb.types.Array(nb.types.int64, 1, "C", False, aligned=True),
-        nb.types.Array(nb.types.int64, 1, "C", False, aligned=True),
+        nb.types.Array(nb.types.float64, 1, "C", False, aligned=True),
+        nb.types.Array(nb.types.float64, 1, "C", False, aligned=True),
         nb.types.Array(nb.types.float64, 1, "C", False, aligned=True),
         nb.types.int64,
     ),
     cache=True,
 )
 def get_integrated_brier_score_administrative_of_km_curve_from_counts(
-    death_per_step: np.ndarray[tuple[int], np.dtype[np.int64]],
-    exit_per_step: np.ndarray[tuple[int], np.dtype[np.int64]],
+    death_per_step: np.ndarray[tuple[int], np.dtype[np.float64]],
+    exit_per_step: np.ndarray[tuple[int], np.dtype[np.float64]],
     km_curve: np.ndarray[tuple[int], np.dtype[np.float64]],
     max_time: int,
 ) -> float:
-    sumscores = np.zeros(max_time + 1)
+    sum_scores = np.zeros(max_time + 1)
     counts_per_step = np.zeros(max_time + 1)
 
-    for ts, (ds, es) in enumerate(zip(death_per_step, exit_per_step)):
-        for tc, p in zip(range(1, max_time + 1), km_curve):
+    for ts in range(1, max_time + 1):
+        for tc in range(1, max_time + 1):
+            v = km_curve[tc]
             if ts <= tc:
-                sumscores[tc] += (ds) * np.square(p)
-                counts_per_step[tc] += ds
-
+                sum_scores[tc] += death_per_step[ts] * np.square(v)
+                counts_per_step[tc] += death_per_step[ts]
             else:
-                sumscores[tc] += (es) * np.square(1 - p)
-                counts_per_step[tc] += es
+                sum_scores[tc] += exit_per_step[ts] * np.square(1 - v)
+                counts_per_step[tc] += exit_per_step[ts]
 
-    return np.trapezoid(np.nan_to_num(sumscores[1:] / counts_per_step[1:]))
+    return np.trapezoid(np.nan_to_num(sum_scores[1:] / counts_per_step[1:]))
 
 
 @nb.njit(
     nb.types.float64(
-        nb.types.Array(nb.types.int64, 1, "C", False, aligned=True),
-        nb.types.Array(nb.types.int64, 1, "C", False, aligned=True),
-        nb.types.Array(nb.types.int64, 1, "C", False, aligned=True),
-        nb.types.Array(nb.types.int64, 1, "C", False, aligned=True),
+        nb.types.Array(nb.types.float64, 1, "C", False, aligned=True),
+        nb.types.Array(nb.types.float64, 1, "C", False, aligned=True),
+        nb.types.Array(nb.types.float64, 1, "C", False, aligned=True),
+        nb.types.Array(nb.types.float64, 1, "C", False, aligned=True),
     ),
     cache=True,
 )
 def wasserstein_distance_impurity(
-    death_per_step_left: np.ndarray[tuple[int], np.dtype[np.int64]],
-    exit_per_step_left: np.ndarray[tuple[int], np.dtype[np.int64]],
-    death_per_step_right: np.ndarray[tuple[int], np.dtype[np.int64]],
-    exit_per_step_right: np.ndarray[tuple[int], np.dtype[np.int64]],
+    death_per_step_left: np.ndarray[tuple[int], np.dtype[np.float64]],
+    exit_per_step_left: np.ndarray[tuple[int], np.dtype[np.float64]],
+    death_per_step_right: np.ndarray[tuple[int], np.dtype[np.float64]],
+    exit_per_step_right: np.ndarray[tuple[int], np.dtype[np.float64]],
 ) -> float:
     left_km = get_km_curve_from_counts(death_per_step_left, exit_per_step_left)
 
@@ -83,23 +83,23 @@ def wasserstein_distance_impurity(
 
 @nb.njit(
     nb.types.float64(
-        nb.types.Array(nb.types.int64, 1, "C", False, aligned=True),
-        nb.types.Array(nb.types.int64, 1, "C", False, aligned=True),
+        nb.types.Array(nb.types.float64, 1, "C", False, aligned=True),
+        nb.types.Array(nb.types.float64, 1, "C", False, aligned=True),
         nb.types.int64,
-        nb.types.Array(nb.types.int64, 1, "C", False, aligned=True),
-        nb.types.Array(nb.types.int64, 1, "C", False, aligned=True),
+        nb.types.Array(nb.types.float64, 1, "C", False, aligned=True),
+        nb.types.Array(nb.types.float64, 1, "C", False, aligned=True),
         nb.types.int64,
         nb.types.int64,
     ),
     cache=True,
 )
 def integrated_brier_score_administrative_impurity(
-    death_per_step_left: np.ndarray[tuple[int], np.dtype[np.int64]],
-    exit_per_step_left: np.ndarray[tuple[int], np.dtype[np.int64]],
-    n_left: int,
-    death_per_step_right: np.ndarray[tuple[int], np.dtype[np.int64]],
-    exit_per_step_right: np.ndarray[tuple[int], np.dtype[np.int64]],
-    n_right: int,
+    death_per_step_left: np.ndarray[tuple[int], np.dtype[np.float64]],
+    exit_per_step_left: np.ndarray[tuple[int], np.dtype[np.float64]],
+    left_weights: float,
+    death_per_step_right: np.ndarray[tuple[int], np.dtype[np.float64]],
+    exit_per_step_right: np.ndarray[tuple[int], np.dtype[np.float64]],
+    right_weights: float,
     max_time: int,
 ) -> float:
     left_km_curve = get_km_curve_from_counts(death_per_step_left, exit_per_step_left)
@@ -112,7 +112,7 @@ def integrated_brier_score_administrative_impurity(
         death_per_step_right, exit_per_step_right, right_km_curve, max_time
     )
 
-    return -(right_score / n_right + left_score / n_left / 2)
+    return -(right_score / right_weights + left_score / left_weights / 2)
 
 
 @nb.njit(
@@ -122,11 +122,12 @@ def integrated_brier_score_administrative_impurity(
         nb.types.Array(nb.types.bool_, 1, "C", False, aligned=True),
         nb.types.Array(nb.types.float64, 1, "C", False, aligned=True),
         nb.types.int64,
-        nb.types.Array(nb.types.int64, 1, "C", False, aligned=True),
-        nb.types.Array(nb.types.int64, 1, "C", False, aligned=True),
+        nb.types.Array(nb.types.float64, 1, "C", False, aligned=True),
+        nb.types.Array(nb.types.float64, 1, "C", False, aligned=True),
         nb.types.int64,
         nb.types.int64,
         nb.types.int64,
+        nb.types.float64,
     ),
     cache=True,
 )
@@ -141,6 +142,7 @@ def get_best_threshold_on_col(
     n_rows: int,
     min_samples_leaf: int,
     crit_code: int,
+    weights_total: float,
 ):
     best_impurity = -np.inf
     best_threshold = -1.0
@@ -149,33 +151,43 @@ def get_best_threshold_on_col(
     times_sort = times[arg_sort]
     col_sort = col[arg_sort]
     events_sort = events[arg_sort]
-    # weights_sort = weights[arg_sort]
+    weights_sort = weights[arg_sort]
     last_value = col[-1]
 
     death_per_step_right = death_per_step.copy()
     exit_per_step_right = events_per_step.copy()
+    weights_right = weights_total
 
-    death_per_step_left = np.zeros(max_time + 1, dtype=np.int64)
-    exit_per_step_left = np.zeros(max_time + 1, dtype=np.int64)
+    death_per_step_left = np.zeros(max_time + 1)
+    exit_per_step_left = np.zeros(max_time + 1)
 
     for row_index in range(n_rows - 1):
 
         value_i = col_sort[row_index]
         times_i = times_sort[row_index]
         event_i = events_sort[row_index]
+        weight_i = weights_sort[row_index]
 
         if event_i == 1:
-            death_per_step_right[times_i] -= 1
-            death_per_step_left[times_i] += 1
+            death_per_step_right[times_i] -= weight_i
+            death_per_step_left[times_i] += weight_i
 
-        exit_per_step_right[times_i] -= 1
-        exit_per_step_left[times_i] += 1
+        exit_per_step_right[times_i] -= weight_i
+        exit_per_step_left[times_i] += weight_i
+
+        weights_right -= weight_i
 
         if (value_i != col[row_index + 1]) and (value_i != last_value):
             left_size = row_index + 1
             right_size = n_rows - left_size
+            weights_left = weights_total - weights_right
 
-            if (left_size >= min_samples_leaf) and (right_size >= min_samples_leaf):
+            if (
+                (left_size >= min_samples_leaf)
+                and (right_size >= min_samples_leaf)
+                and (weights_left >= min_samples_leaf)
+                and (weights_right >= min_samples_leaf)
+            ):
 
                 if crit_code == 0:
                     impurity = wasserstein_distance_impurity(
@@ -189,10 +201,10 @@ def get_best_threshold_on_col(
                     impurity = integrated_brier_score_administrative_impurity(
                         death_per_step_left,
                         exit_per_step_left,
-                        left_size,
+                        weights_left,
                         death_per_step_right,
                         exit_per_step_right,
-                        right_size,
+                        weights_right,
                         max_time,
                     )
                 # to do, add log rank impurity
@@ -209,8 +221,8 @@ def get_best_threshold_on_col(
         nb.types.Array(nb.types.float64, 2, "C", False, aligned=True),
         nb.types.Array(nb.types.int64, 1, "C", False, aligned=True),
         nb.types.Array(nb.types.bool_, 1, "C", False, aligned=True),
-        nb.types.Array(nb.types.int64, 1, "C", False, aligned=True),
-        nb.types.Array(nb.types.int64, 1, "C", False, aligned=True),
+        nb.types.Array(nb.types.float64, 1, "C", False, aligned=True),
+        nb.types.Array(nb.types.float64, 1, "C", False, aligned=True),
         nb.types.Array(nb.types.float64, 1, "C", False, aligned=True),
         nb.types.int64,
         nb.types.int64,
@@ -224,8 +236,8 @@ def get_best_threshold_on_data(
     X: np.ndarray[tuple[int, int], np.dtype[np.float64]],
     times: np.ndarray[tuple[int], np.dtype[np.int64]],
     events: np.ndarray[tuple[int], np.dtype[np.bool_]],
-    death_per_step: np.ndarray[tuple[int], np.dtype[np.int64]],
-    events_per_step: np.ndarray[tuple[int], np.dtype[np.int64]],
+    death_per_step: np.ndarray[tuple[int], np.dtype[np.float64]],
+    events_per_step: np.ndarray[tuple[int], np.dtype[np.float64]],
     weights: np.ndarray[tuple[int], np.dtype[np.float64]],
     min_samples_leaf: int,
     max_features: int,
@@ -247,6 +259,7 @@ def get_best_threshold_on_data(
         shape=n_cols, fill_value=-np.inf, dtype=np.float64
     )
     best_col_thresholds = np.zeros(n_cols)
+    weights_total = weights.sum()
 
     for col_index in nb.prange(n_cols):
         col = X[:, col_index]
@@ -262,6 +275,7 @@ def get_best_threshold_on_data(
                 n_rows,
                 min_samples_leaf,
                 crit_code,
+                weights_total,
             )
 
             best_col_proxy_impurites[col_index] = best_proxy_impurity
@@ -348,16 +362,16 @@ def split_data(
             nb.types.optional(nb.types.Array(nb.bool_, 1, "C", False, aligned=True)),
             nb.types.optional(nb.types.Array(nb.float64, 1, "C", False, aligned=True)),
             nb.types.optional(nb.float64),
-            nb.types.optional(nb.types.Array(nb.int64, 1, "C", False, aligned=True)),
-            nb.types.optional(nb.types.Array(nb.int64, 1, "C", False, aligned=True)),
+            nb.types.optional(nb.types.Array(nb.float64, 1, "C", False, aligned=True)),
+            nb.types.optional(nb.types.Array(nb.float64, 1, "C", False, aligned=True)),
             nb.types.optional(nb.types.Array(nb.float64, 1, "C", False, aligned=True)),
             nb.types.optional(nb.types.Array(nb.float64, 2, "C", False, aligned=True)),
             nb.types.optional(nb.types.Array(nb.int64, 1, "C", False, aligned=True)),
             nb.types.optional(nb.types.Array(nb.bool_, 1, "C", False, aligned=True)),
             nb.types.optional(nb.types.Array(nb.float64, 1, "C", False, aligned=True)),
             nb.types.optional(nb.float64),
-            nb.types.optional(nb.types.Array(nb.int64, 1, "C", False, aligned=True)),
-            nb.types.optional(nb.types.Array(nb.int64, 1, "C", False, aligned=True)),
+            nb.types.optional(nb.types.Array(nb.float64, 1, "C", False, aligned=True)),
+            nb.types.optional(nb.types.Array(nb.float64, 1, "C", False, aligned=True)),
             nb.types.optional(nb.types.Array(nb.float64, 1, "C", False, aligned=True)),
         )
     )(
@@ -376,8 +390,8 @@ def split_data(
         nb.types.float64,
         nb.types.int64,
         nb.types.int64,
-        nb.types.Array(nb.int64, 1, "C", False, aligned=True),
-        nb.types.Array(nb.int64, 1, "C", False, aligned=True),
+        nb.types.Array(nb.float64, 1, "C", False, aligned=True),
+        nb.types.Array(nb.float64, 1, "C", False, aligned=True),
         nb.types.int64,
     ),
     cache=True,
@@ -449,10 +463,10 @@ def process_node(
         ) = split_data(X, times, events, weights, threshold, feature)
 
         left_death_per_step = np.bincount(
-            left_times, left_events, minlength=minlength
-        ).astype(np.int64)
-        left_events_per_step = np.bincount(left_times, minlength=minlength).astype(
-            np.int64
+            left_times, left_events * left_weights, minlength=minlength
+        )
+        left_events_per_step = np.bincount(
+            left_times, left_weights, minlength=minlength
         )
 
         left_km_curve = get_km_curve_from_counts(
@@ -463,10 +477,10 @@ def process_node(
         )
 
         right_death_per_step = np.bincount(
-            right_times, right_events, minlength=minlength
-        ).astype(np.int64)
-        right_events_per_step = np.bincount(right_times, minlength=minlength).astype(
-            np.int64
+            right_times, right_events * right_weights, minlength=minlength
+        )
+        right_events_per_step = np.bincount(
+            right_times, right_weights, minlength=minlength
         )
 
         right_km_curve = get_km_curve_from_counts(
@@ -540,6 +554,9 @@ def process_node(
                     nb.types.Array(nb.float64, 2, "C", False, aligned=True),
                     nb.types.Array(nb.int64, 1, "C", False, aligned=True),
                     nb.types.Array(nb.bool_, 1, "C", False, aligned=True),
+                    nb.types.Array(nb.float64, 1, "C", False, aligned=True),
+                    nb.types.Array(nb.float64, 1, "C", False, aligned=True),
+                    nb.types.Array(nb.float64, 1, "C", False, aligned=True),
                     nb.types.Array(nb.float64, 1, "C", False, aligned=True),
                     nb.int64,
                     nb.float64,
@@ -618,14 +635,12 @@ def build_tree(
     values = []
 
     max_time = times.max()
-    root_death_per_step = np.bincount(times, events, minlength=max_time + 1).astype(
-        np.int64
-    )
-    root_events_per_step = np.bincount(times, minlength=max_time + 1).astype(np.int64)
+    root_death_per_step = np.bincount(times, events * weights, minlength=max_time + 1)
+    root_exit_per_step = np.bincount(times, weights, minlength=max_time + 1)
 
-    km_curve = get_km_curve_from_counts(root_death_per_step, root_events_per_step)
+    km_curve = get_km_curve_from_counts(root_death_per_step, root_exit_per_step)
     score = get_integrated_brier_score_administrative_of_km_curve_from_counts(
-        root_death_per_step, root_events_per_step, km_curve, max_time
+        root_death_per_step, root_exit_per_step, km_curve, max_time
     )
 
     to_build_stack = nb.typed.List()
@@ -639,7 +654,7 @@ def build_tree(
             events,
             weights,
             root_death_per_step,
-            root_events_per_step,
+            root_exit_per_step,
             km_curve,
             0,
             score,
