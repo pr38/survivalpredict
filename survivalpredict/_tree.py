@@ -182,8 +182,8 @@ def get_best_threshold_on_col(
         weights_right -= weight_i
 
         if (value_i != col_sort[row_index + 1]) and (value_i != last_value):
-            left_size = row_index + 1
-            right_size = n_rows - left_size
+            #left_size = row_index + 1
+            #right_size = n_rows - left_size
             weights_left = weights_total - weights_right
 
             if (

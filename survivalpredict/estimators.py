@@ -4,8 +4,9 @@ from math import ceil
 from numbers import Integral, Real
 from typing import Any, Callable, Literal, Optional, Union
 
+from joblib.parallel import Parallel, delayed
 import numpy as np
-from sklearn.base import BaseEstimator, _fit_context
+from sklearn.base import BaseEstimator, _fit_context, clone
 from sklearn.neighbors import NearestNeighbors
 from sklearn.neighbors._base import VALID_METRICS as VALID_METRICS_KNN
 from sklearn.utils import check_random_state
@@ -48,6 +49,7 @@ from ._discrete_time_ph_estimation import (
     predict_parametric_discrete_time_ph_model,
     train_parametric_discrete_time_ph_model,
 )
+from ._forest import build_tree, get_n_samples_bootstrap
 from ._mtlr import (
     convert_hazard_to_survival_mtlr,
     predict_hazard_mtlr,
@@ -3218,3 +3220,193 @@ class DecisionTreeSurvival(_SurvivalPredictBase, _KaplanMeierBase):
         survival = self.predict(X, max_time)
 
         return convert_kaplan_meier_survival_curve_to_hazards(survival)
+
+
+class RandomForestSurvival(_SurvivalPredictBase, _KaplanMeierBase):
+    _parameter_constraints: dict = {
+        "n_estimators": [Interval(Integral, 1, None, closed="left")],
+        "bootstrap": ["boolean"],
+        # E"oob_score": ["boolean", callable],
+        "n_jobs": [Integral, None],
+        "random_state": ["random_state"],
+        "max_samples": [
+            None,
+            Interval(RealNotInt, 0.0, None, closed="neither"),
+            Interval(Integral, 1, None, closed="left"),
+        ],
+        **DecisionTreeSurvival._parameter_constraints,
+    }
+
+    def __init__(
+        self,
+        *,
+        n_estimators: int = 100,
+        bootstrap: bool = True,
+        n_jobs: Optional[int] = None,
+        max_samples: None | int | float = None,
+        criterion: Literal[
+            "integrated_brier_score_administrative", "wasserstein_distance"
+        ] = "wasserstein_distance",
+        splitter: Literal["best"] = "best",
+        max_depth: Optional[int] = None,
+        min_samples_split: int = 2,
+        min_samples_leaf: int = 1,
+        min_weight_fraction_leaf: float = 0.0,
+        max_features: Union[None, int, float, Literal["sqrt"], Literal["log2"]] = None,
+        random_state: Optional[int] = None,
+        max_leaf_nodes: Optional[int] = None,
+        min_impurity_decrease: float = 0.0,
+        ccp_alpha: float = 0.0,
+    ):
+        self.n_estimators = n_estimators
+        self.bootstrap = bootstrap
+        self.n_jobs = n_jobs
+        self.max_samples = max_samples
+        self.criterion = criterion
+        self.splitter = splitter
+        self.max_depth = max_depth
+        self.min_samples_split = min_samples_split
+        self.min_samples_leaf = min_samples_leaf
+        self.min_weight_fraction_leaf = min_weight_fraction_leaf
+        self.max_features = max_features
+        self.max_leaf_nodes = max_leaf_nodes
+        self.random_state = random_state
+        self.min_impurity_decrease = min_impurity_decrease
+        self.ccp_alpha = ccp_alpha
+
+    @_fit_context(prefer_skip_nested_validation=True)
+    def fit(
+        self,
+        X: np.ndarray[tuple[int, int], np.dtype[np.float64]],
+        times: np.ndarray[tuple[int], np.dtype[np.int64]],
+        events: np.ndarray[tuple[int], np.dtype[np.bool_]],
+        check_input: bool = True,
+        sample_weight: np.ndarray[tuple[int], np.dtype[np.float64]] = None,
+    ):
+
+        if check_input:
+            X, times, events, _, __ = self._validate_for_fit(
+                X, times, events, None, None
+            )
+
+        estimator = DecisionTreeSurvival(
+            splitter=self.splitter,
+            max_depth=self.max_depth,
+            min_samples_split=self.min_samples_split,
+            min_samples_leaf=self.min_samples_leaf,
+            min_weight_fraction_leaf=self.min_weight_fraction_leaf,
+            max_features=self.max_features,
+            max_leaf_nodes=self.max_leaf_nodes,
+            random_state=self.random_state,
+            min_impurity_decrease=self.min_impurity_decrease,
+            ccp_alpha=self.ccp_alpha,
+        )
+
+        if not self.bootstrap and self.max_samples is not None:
+            raise ValueError(
+                "`max_sample` cannot be set if `bootstrap=False`. "
+                "Either switch to `bootstrap=True` or set "
+                "`max_sample=None`."
+            )
+        elif self.bootstrap:
+            n_samples_bootstrap = get_n_samples_bootstrap(
+                X.shape[0], self.max_samples, sample_weight
+            )
+        else:
+            n_samples_bootstrap = None
+
+        self._n_samples_bootstrap = n_samples_bootstrap
+
+        trees = [clone(estimator) for _ in range(self.n_estimators)]
+
+        self.estimators_ = Parallel(n_jobs=self.n_jobs, prefer="threads")(
+            delayed(build_tree)(
+                t,
+                self.bootstrap,
+                X,
+                times,
+                events,
+                sample_weight,
+                n_samples_bootstrap,
+            )
+            for t in trees
+        )
+
+        self.is_fitted_ = True
+        return self
+
+    def predict(
+        self,
+        X: np.ndarray[tuple[int, int], np.dtype[np.float64]],
+        max_time: Optional[int] = None,
+    ) -> np.ndarray[tuple[int, int], np.dtype[np.float64]]:
+        """
+        Build survival curves on an array of vectors X.
+
+        Parameters
+        ----------
+        X : array-like of shape (n_samples, n_features)
+            Predicting data.
+
+        max_time : int, default=None
+            Maximum time of built survival curves. If none, maximum time is max
+            time seen on training data.
+
+        Returns
+        -------
+        ndarray of shape (n_samples, max_time), dtype=np.float64
+            The estimated survival curves, the left-most column is the probability of survival at time 1,
+            and the right-most column ends at max_time.
+        """
+
+        check_is_fitted(self)
+
+        X, _, max_time = self._validate_for_predict(X, None, max_time)
+
+        y_hat = np.zeros((X.shape[0], max_time))
+
+        # todo make parallel without allocating too much mem
+        for e in self.estimators_:
+            y_hat += e.predict(X, max_time)
+
+        y_hat /= len(self.estimators_)
+
+        return y_hat
+
+    def predict_hazard(
+        self,
+        X: np.ndarray[tuple[int, int], np.dtype[np.float64]],
+        max_time: Optional[int] = None,
+    ) -> np.ndarray[tuple[int, int], np.dtype[np.float64]]:
+        """
+        Build hazards on an array of vectors X.
+
+        Parameters
+        ----------
+        X : array-like of shape (n_samples, n_features)
+            Predicting data.
+
+        max_time : int, default=None
+            Maximum time of built hazards. If none, maximum time is max
+            time seen on training data.
+
+        Returns
+        -------
+        ndarray of shape (n_samples, max_time), dtype=np.float64
+            The estimated hazards, the left-most column is the hazards at time 1,
+            and the right-most column ends at max_time.
+        """
+
+        check_is_fitted(self)
+
+        X, _, max_time = self._validate_for_predict(X, None, max_time)
+
+        y_hat = np.zeros((X.shape[0], max_time))
+
+        # todo make parallel without allocating too much mem
+        for e in self.estimators_:
+            y_hat += e.predict_hazard(X, max_time)
+
+        y_hat /= len(self.estimators_)
+
+        return y_hat
