@@ -65,6 +65,7 @@ def get_integrated_brier_score_administrative_of_km_curve_from_counts(
         nb.types.Array(nb.types.float64, 1, "C", False, aligned=True),
         nb.types.Array(nb.types.float64, 1, "C", False, aligned=True),
         nb.types.Array(nb.types.float64, 1, "C", False, aligned=True),
+        nb.types.int64,
     ),
     cache=True,
 )
@@ -73,12 +74,15 @@ def wasserstein_distance_impurity(
     exit_per_step_left: np.ndarray[tuple[int], np.dtype[np.float64]],
     death_per_step_right: np.ndarray[tuple[int], np.dtype[np.float64]],
     exit_per_step_right: np.ndarray[tuple[int], np.dtype[np.float64]],
+    max_time: int,
 ) -> float:
     left_km = get_km_curve_from_counts(death_per_step_left, exit_per_step_left)
 
     right_km = get_km_curve_from_counts(death_per_step_right, exit_per_step_right)
 
-    return np.sum(np.abs((1 - left_km) - (1 - right_km)))
+    return np.sum(
+        np.abs((1 - left_km[: max_time + 1]) - (1 - right_km[: max_time + 1]))
+    )
 
 
 @nb.njit(
@@ -149,10 +153,10 @@ def get_best_threshold_on_col(
 
     arg_sort = np.argsort(col)
     times_sort = times[arg_sort]
-    col_sort = col[arg_sort]
+    col_sort = col.copy()[arg_sort]
     events_sort = events[arg_sort]
     weights_sort = weights[arg_sort]
-    last_value = col[-1]
+    last_value = col_sort[-1]
 
     death_per_step_right = death_per_step.copy()
     exit_per_step_right = events_per_step.copy()
@@ -177,15 +181,15 @@ def get_best_threshold_on_col(
 
         weights_right -= weight_i
 
-        if (value_i != col[row_index + 1]) and (value_i != last_value):
+        if (value_i != col_sort[row_index + 1]) and (value_i != last_value):
             left_size = row_index + 1
             right_size = n_rows - left_size
             weights_left = weights_total - weights_right
 
             if (
-                (left_size >= min_samples_leaf)
-                and (right_size >= min_samples_leaf)
-                and (weights_left >= min_samples_leaf)
+                # (left_size >= min_samples_leaf)
+                # and (right_size >= min_samples_leaf)
+                (weights_left >= min_samples_leaf)
                 and (weights_right >= min_samples_leaf)
             ):
 
@@ -195,6 +199,7 @@ def get_best_threshold_on_col(
                         exit_per_step_left,
                         death_per_step_right,
                         exit_per_step_right,
+                        max_time,
                     )
 
                 else:
@@ -211,13 +216,13 @@ def get_best_threshold_on_col(
 
                 if impurity > best_impurity:
                     best_impurity = impurity
-                    best_threshold = (value_i + col[row_index + 1]) / 2
+                    best_threshold = (value_i + col_sort[row_index + 1]) / 2
 
     return best_threshold, best_impurity
 
 
 @nb.njit(
-    nb.types.Tuple((nb.types.int64, nb.types.float64))(
+    nb.types.Tuple((nb.types.int64, nb.types.float64, nb.types.float64))(
         nb.types.Array(nb.types.float64, 2, "C", False, aligned=True),
         nb.types.Array(nb.types.int64, 1, "C", False, aligned=True),
         nb.types.Array(nb.types.bool_, 1, "C", False, aligned=True),
@@ -231,6 +236,7 @@ def get_best_threshold_on_col(
         nb.types.int64,
     ),
     cache=True,
+    parallel=True,
 )
 def get_best_threshold_on_data(
     X: np.ndarray[tuple[int, int], np.dtype[np.float64]],
@@ -244,7 +250,7 @@ def get_best_threshold_on_data(
     random_state: int,
     crit_code: int,
     max_time: int,
-) -> tuple[int, float]:
+) -> tuple[int, float, float]:
     if random_state >= 0:
         np.random.seed(random_state)
 
@@ -287,8 +293,9 @@ def get_best_threshold_on_data(
     # This is done to immitate sklearn behaviour(see the splitter classes in the tree modual).
 
     best_threshold = best_col_thresholds[best_col]
+    best_impurity = best_col_proxy_impurites[best_col]
 
-    return best_col, best_threshold
+    return best_col, best_threshold, best_impurity
 
 
 @nb.njit(
@@ -433,7 +440,7 @@ def process_node(
     is_leaf = is_leaf or score <= np.finfo(np.float64).eps
 
     if not is_leaf:
-        feature, threshold = get_best_threshold_on_data(
+        feature, threshold, impurity = get_best_threshold_on_data(
             X,
             times,
             events,
@@ -447,7 +454,7 @@ def process_node(
             max_time,
         )
 
-        if threshold == -1.0:
+        if impurity == -np.inf:
             is_leaf = True
 
     if not is_leaf:
@@ -464,10 +471,10 @@ def process_node(
 
         left_death_per_step = np.bincount(
             left_times, left_events * left_weights, minlength=minlength
-        )
+        ).astype(np.float64)[: max_time + 1]
         left_events_per_step = np.bincount(
             left_times, left_weights, minlength=minlength
-        )
+        ).astype(np.float64)[: max_time + 1]
 
         left_km_curve = get_km_curve_from_counts(
             left_death_per_step, left_events_per_step
@@ -478,10 +485,10 @@ def process_node(
 
         right_death_per_step = np.bincount(
             right_times, right_events * right_weights, minlength=minlength
-        )
+        ).astype(np.float64)[: max_time + 1]
         right_events_per_step = np.bincount(
             right_times, right_weights, minlength=minlength
-        )
+        ).astype(np.float64)[: max_time + 1]
 
         right_km_curve = get_km_curve_from_counts(
             right_death_per_step, right_events_per_step
@@ -607,6 +614,7 @@ def get_index_with_highest_score(to_build_stack):
         nb.int64,
         nb.int64,
         nb.int64,
+        nb.int64,
     ),
     cache=True,
 )
@@ -624,6 +632,7 @@ def build_tree(
     max_features: int,
     max_leaf_nodes: int,
     random_state: int,
+    max_time: int,
 ):
     left_childs = []
     right_childs = []
@@ -634,9 +643,12 @@ def build_tree(
     weighted_n_node_samples = []
     values = []
 
-    max_time = times.max()
-    root_death_per_step = np.bincount(times, events * weights, minlength=max_time + 1)
-    root_exit_per_step = np.bincount(times, weights, minlength=max_time + 1)
+    root_death_per_step = np.bincount(times, events * weights, minlength=max_time + 1)[
+        : max_time + 1
+    ]
+    root_exit_per_step = np.bincount(times, weights, minlength=max_time + 1)[
+        : max_time + 1
+    ]
 
     km_curve = get_km_curve_from_counts(root_death_per_step, root_exit_per_step)
     score = get_integrated_brier_score_administrative_of_km_curve_from_counts(
@@ -829,6 +841,7 @@ def get_survival_tree(
     max_features: int,
     max_leaf_nodes: int,
     random_state: int,
+    max_time: int,
     ccp_alpha,
 ) -> Tree:
     (
@@ -855,6 +868,7 @@ def get_survival_tree(
         max_features,
         max_leaf_nodes,
         random_state,
+        max_time,
     )
 
     dt = {

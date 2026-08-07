@@ -82,6 +82,7 @@ __all__ = [
     "AalenAdditiveHazard",
     "CoxPHElasticNet",
     "MultiTaskLogisticRegression",
+    "DecisionTreeSurvival",
 ]
 
 
@@ -3017,13 +3018,42 @@ class DecisionTreeSurvival(_SurvivalPredictBase, _KaplanMeierBase):
         times: np.ndarray[tuple[int], np.dtype[np.int64]],
         events: np.ndarray[tuple[int], np.dtype[np.bool_]],
         check_input: bool = True,
+        sample_weight: np.ndarray[tuple[int], np.dtype[np.float64]] = None,
     ):
+        """
+        Fit model.
+
+        Parameters
+        ----------
+        X : array-like of shape (n_samples, n_features)
+            Training data.
+
+        times : array-like of shape (n_samples), dtype=np.int64
+            Point in time last observed.
+
+        events : array-like of shape (n_samples), dtype=np.bool_
+            Experianed event.
+
+        strata : array-like of shape (n_samples,), dtype=np.int64, default=None
+            If passed in, associated strata for per observation.
+
+        check_input : bool, default=True
+            If True, validates and casts inputs.
+
+        sample_weight:
+            array-like of shape (n_samples,), default=None
+            Sample weights.
+
+        Returns
+        -------
+        object
+            Fitted Estimator.
+        """
+
         if check_input:
             X, times, events, _, __ = self._validate_for_fit(
                 X, times, events, None, None
             )
-
-        self._max_time_observed = np.max(times)
 
         check_random_state(self.random_state)
         if self.random_state == None:
@@ -3070,7 +3100,7 @@ class DecisionTreeSurvival(_SurvivalPredictBase, _KaplanMeierBase):
         min_weight_leaf = (
             0.0
             if self.min_weight_fraction_leaf is None
-            else float(self.min_weight_fraction_leaf)
+            else float(self.min_weight_fraction_leaf * n_samples)
         )
 
         min_impurity_decrease = (
@@ -3081,7 +3111,13 @@ class DecisionTreeSurvival(_SurvivalPredictBase, _KaplanMeierBase):
 
         ccp_alpha = 0.0 if self.ccp_alpha is None else float(self.ccp_alpha)
 
-        weights = np.ones(n_samples)
+        if sample_weight is None:
+            weights = np.ones(n_samples)
+            self._max_time_observed = np.max(times)
+
+        else:
+            weights = sample_weight
+            self._max_time_observed = np.max(times[sample_weight != 0.0])
 
         self.tree_ = get_survival_tree(
             X,
@@ -3097,6 +3133,7 @@ class DecisionTreeSurvival(_SurvivalPredictBase, _KaplanMeierBase):
             max_features,
             max_leaf_nodes,
             random_state,
+            self._max_time_observed,
             ccp_alpha,
         )
 
