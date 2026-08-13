@@ -9,6 +9,7 @@ from sklearn.tree._tree import Tree, _build_pruned_tree_ccp
         nb.types.Array(nb.types.float64, 1, "C", False, aligned=True),
     ),
     cache=True,
+    nogil=True,
 )
 def get_km_curve_from_counts(
     death_per_step: np.ndarray[tuple[int], np.dtype[np.float64]],
@@ -28,37 +29,6 @@ def get_km_curve_from_counts(
     return (1 - hazard_at_step).cumprod()
 
 
-# @nb.njit(
-#     nb.types.float64(
-#         nb.types.Array(nb.types.float64, 1, "C", False, aligned=True),
-#         nb.types.Array(nb.types.float64, 1, "C", False, aligned=True),
-#         nb.types.Array(nb.types.float64, 1, "C", False, aligned=True),
-#         nb.types.int64,
-#     ),
-#     cache=True,
-# )
-# def get_integrated_brier_score_administrative_of_km_curve_from_counts(
-#     death_per_step: np.ndarray[tuple[int], np.dtype[np.float64]],
-#     exit_per_step: np.ndarray[tuple[int], np.dtype[np.float64]],
-#     km_curve: np.ndarray[tuple[int], np.dtype[np.float64]],
-#     max_time: int,
-# ) -> float:
-#     sum_scores = np.zeros(max_time + 1)
-#     counts_per_step = np.zeros(max_time + 1)
-
-#     for ts in range(1, max_time + 1):
-#         for tc in range(1, max_time + 1):
-#             v = km_curve[tc]
-#             if ts <= tc:
-#                 sum_scores[tc] += death_per_step[ts] * np.square(v)
-#                 counts_per_step[tc] += death_per_step[ts]
-#             else:
-#                 sum_scores[tc] += exit_per_step[ts] * np.square(1 - v)
-#                 counts_per_step[tc] += exit_per_step[ts]
-
-#     return np.trapezoid(np.nan_to_num(sum_scores[1:] / counts_per_step[1:]))
-
-
 @nb.njit(
     nb.types.float64(
         nb.types.Array(nb.types.float64, 1, "C", False, aligned=True),
@@ -67,6 +37,7 @@ def get_km_curve_from_counts(
         nb.types.int64,
     ),
     cache=True,
+    nogil=True,
 )
 def get_integrated_brier_score_administrative_of_km_curve_from_counts(
     death_per_step: np.ndarray[tuple[int], np.dtype[np.float64]],
@@ -99,6 +70,7 @@ def get_integrated_brier_score_administrative_of_km_curve_from_counts(
         nb.types.int64,
     ),
     cache=True,
+    nogil=True,
 )
 def wasserstein_distance_impurity(
     death_per_step_left: np.ndarray[tuple[int], np.dtype[np.float64]],
@@ -116,29 +88,6 @@ def wasserstein_distance_impurity(
     )
 
 
-# @nb.njit(
-#     nb.types.float64(
-#         nb.types.Array(nb.types.float64, 1, "C", False, aligned=True),
-#         nb.types.Array(nb.types.float64, 1, "C", False, aligned=True),
-#         nb.types.Array(nb.types.float64, 1, "C", False, aligned=True),
-#         nb.types.Array(nb.types.float64, 1, "C", False, aligned=True),
-#     ),
-#     cache=True,
-# )
-# def log_rank_impurity(
-#     at_risk_per_step, death_per_step, death_per_step_left, events_per_step_left
-# ):
-#     n = at_risk_per_step
-#     a = death_per_step_left
-#     m = death_per_step
-
-#     n_a = np.flip(np.cumsum(np.flip(events_per_step_left)))
-
-#     e = np.nan_to_num(m * n_a) / n
-#     var = np.nan_to_num((m * (n - m)) / (n - 1) * (n_a / n) * (1 - (n_a / n)))
-
-#     return np.nan_to_num(np.sum(a - e) / np.sum((var) ** 1 / 2))
-
 
 @nb.njit(
     nb.types.float64(
@@ -148,6 +97,7 @@ def wasserstein_distance_impurity(
         nb.types.Array(nb.types.float64, 1, "C", False, aligned=True),
     ),
     cache=True,
+    nogil=True,
 )
 def log_rank_approximate_impurity(
     in_risk_set, death_per_step, death_per_step_left, events_per_step_left
@@ -169,6 +119,7 @@ def log_rank_approximate_impurity(
         nb.types.int64,
     ),
     cache=True,
+    nogil=True,
 )
 def integrated_brier_score_administrative_impurity(
     death_per_step_left: np.ndarray[tuple[int], np.dtype[np.float64]],
@@ -207,6 +158,7 @@ def integrated_brier_score_administrative_impurity(
         nb.types.float64,
     ),
     cache=True,
+    nogil=True,
 )
 def get_best_threshold_on_col(
     col: np.ndarray[tuple[int], np.dtype[np.float64]],
@@ -321,6 +273,7 @@ def get_best_threshold_on_col(
         nb.types.int64,
     ),
     cache=True,
+    nogil=True,
     # parallel=True,
 )
 def get_best_threshold_on_data(
@@ -404,6 +357,7 @@ def get_best_threshold_on_data(
         nb.int64,
     ),
     cache=True,
+    nogil=True,
     # parallel=True,
 )
 def split_data(
@@ -487,6 +441,7 @@ def split_data(
         nb.types.int64,
     ),
     cache=True,
+    nogil=True,
 )
 def process_node(
     X: np.ndarray[tuple[int, int], np.dtype[np.float64]],
@@ -658,6 +613,7 @@ def process_node(
     ),
     inline="always",
     cache=True,
+    nogil=True,
 )
 def get_index_with_highest_score(to_build_stack):
     best_score = np.inf
@@ -702,6 +658,7 @@ def get_index_with_highest_score(to_build_stack):
         nb.int64,
     ),
     cache=True,
+    nogil=True,
 )
 def build_tree(
     X: np.ndarray[tuple[int, int], np.dtype[np.float64]],
