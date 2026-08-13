@@ -2959,7 +2959,11 @@ class DecisionTreeSurvival(_SurvivalPredictBase, _KaplanMeierBase):
     _parameter_constraints: dict = {
         "criterion": [
             StrOptions(
-                {"integrated_brier_score_administrative", "wasserstein_distance"}
+                {
+                    "integrated_brier_score_administrative",
+                    "wasserstein_distance",
+                    "log_rank",
+                }
             )
         ],
         "splitter": [StrOptions({"best"})],  # 'random' to-do
@@ -2987,8 +2991,8 @@ class DecisionTreeSurvival(_SurvivalPredictBase, _KaplanMeierBase):
         self,
         *,
         criterion: Literal[
-            "integrated_brier_score_administrative", "wasserstein_distance"
-        ] = "wasserstein_distance",
+            "integrated_brier_score_administrative", "wasserstein_distance", "log_rank"
+        ] = "log_rank",
         splitter: Literal["best"] = "best",
         max_depth: Optional[int] = None,
         min_samples_split: int = 2,
@@ -3063,7 +3067,12 @@ class DecisionTreeSurvival(_SurvivalPredictBase, _KaplanMeierBase):
         else:
             random_state = self.random_state
 
-        crit_code = 0 if self.criterion == "wasserstein_distance" else 1
+        if self.criterion == "wasserstein_distance":
+            crit_code = 0
+        elif self.criterion == "integrated_brier_score_administrative":
+            crit_code = 1
+        else:
+            crit_code = 2
 
         n_samples, n_features = X.shape
 
@@ -3226,7 +3235,6 @@ class RandomForestSurvival(_SurvivalPredictBase, _KaplanMeierBase):
     _parameter_constraints: dict = {
         "n_estimators": [Interval(Integral, 1, None, closed="left")],
         "bootstrap": ["boolean"],
-        # E"oob_score": ["boolean", callable],
         "n_jobs": [Integral, None],
         "random_state": ["random_state"],
         "max_samples": [
@@ -3245,14 +3253,16 @@ class RandomForestSurvival(_SurvivalPredictBase, _KaplanMeierBase):
         n_jobs: Optional[int] = None,
         max_samples: None | int | float = None,
         criterion: Literal[
-            "integrated_brier_score_administrative", "wasserstein_distance"
-        ] = "wasserstein_distance",
+            "integrated_brier_score_administrative", "wasserstein_distance", "log_rank"
+        ] = "log_rank",
         splitter: Literal["best"] = "best",
         max_depth: Optional[int] = None,
         min_samples_split: int = 2,
         min_samples_leaf: int = 1,
         min_weight_fraction_leaf: float = 0.0,
-        max_features: Union[None, int, float, Literal["sqrt"], Literal["log2"]] = None,
+        max_features: Union[
+            None, int, float, Literal["sqrt"], Literal["log2"]
+        ] = "sqrt",
         random_state: Optional[int] = None,
         max_leaf_nodes: Optional[int] = None,
         min_impurity_decrease: float = 0.0,
@@ -3290,6 +3300,7 @@ class RandomForestSurvival(_SurvivalPredictBase, _KaplanMeierBase):
             )
 
         estimator = DecisionTreeSurvival(
+            criterion=self.criterion,
             splitter=self.splitter,
             max_depth=self.max_depth,
             min_samples_split=self.min_samples_split,
@@ -3319,7 +3330,7 @@ class RandomForestSurvival(_SurvivalPredictBase, _KaplanMeierBase):
 
         trees = [clone(estimator) for _ in range(self.n_estimators)]
 
-        self.estimators_ = Parallel(n_jobs=self.n_jobs, prefer="threads")(
+        self.estimators_ = Parallel(n_jobs=self.n_jobs,)( #prefer="threads"
             delayed(build_tree)(
                 t,
                 self.bootstrap,
@@ -3331,6 +3342,8 @@ class RandomForestSurvival(_SurvivalPredictBase, _KaplanMeierBase):
             )
             for t in trees
         )
+
+        self._max_time_observed = times.max()
 
         self.is_fitted_ = True
         return self

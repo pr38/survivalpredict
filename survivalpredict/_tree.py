@@ -28,6 +28,37 @@ def get_km_curve_from_counts(
     return (1 - hazard_at_step).cumprod()
 
 
+# @nb.njit(
+#     nb.types.float64(
+#         nb.types.Array(nb.types.float64, 1, "C", False, aligned=True),
+#         nb.types.Array(nb.types.float64, 1, "C", False, aligned=True),
+#         nb.types.Array(nb.types.float64, 1, "C", False, aligned=True),
+#         nb.types.int64,
+#     ),
+#     cache=True,
+# )
+# def get_integrated_brier_score_administrative_of_km_curve_from_counts(
+#     death_per_step: np.ndarray[tuple[int], np.dtype[np.float64]],
+#     exit_per_step: np.ndarray[tuple[int], np.dtype[np.float64]],
+#     km_curve: np.ndarray[tuple[int], np.dtype[np.float64]],
+#     max_time: int,
+# ) -> float:
+#     sum_scores = np.zeros(max_time + 1)
+#     counts_per_step = np.zeros(max_time + 1)
+
+#     for ts in range(1, max_time + 1):
+#         for tc in range(1, max_time + 1):
+#             v = km_curve[tc]
+#             if ts <= tc:
+#                 sum_scores[tc] += death_per_step[ts] * np.square(v)
+#                 counts_per_step[tc] += death_per_step[ts]
+#             else:
+#                 sum_scores[tc] += exit_per_step[ts] * np.square(1 - v)
+#                 counts_per_step[tc] += exit_per_step[ts]
+
+#     return np.trapezoid(np.nan_to_num(sum_scores[1:] / counts_per_step[1:]))
+
+
 @nb.njit(
     nb.types.float64(
         nb.types.Array(nb.types.float64, 1, "C", False, aligned=True),
@@ -43,20 +74,20 @@ def get_integrated_brier_score_administrative_of_km_curve_from_counts(
     km_curve: np.ndarray[tuple[int], np.dtype[np.float64]],
     max_time: int,
 ) -> float:
-    sum_scores = np.zeros(max_time + 1)
-    counts_per_step = np.zeros(max_time + 1)
 
-    for ts in range(1, max_time + 1):
-        for tc in range(1, max_time + 1):
-            v = km_curve[tc]
-            if ts <= tc:
-                sum_scores[tc] += death_per_step[ts] * np.square(v)
-                counts_per_step[tc] += death_per_step[ts]
-            else:
-                sum_scores[tc] += exit_per_step[ts] * np.square(1 - v)
-                counts_per_step[tc] += exit_per_step[ts]
+    max_index = max_time + 1
 
-    return np.trapezoid(np.nan_to_num(sum_scores[1:] / counts_per_step[1:]))
+    counts_dead_at_step = np.cumsum(death_per_step[1:max_index])
+    death_scores = counts_dead_at_step * np.square(km_curve[1:max_index])
+
+    counts_alive_at_step = exit_per_step.sum() - np.cumsum(exit_per_step[1:max_index])
+    alive_scores = counts_alive_at_step * np.square(1 - km_curve[1:max_index])
+
+    scores = (death_scores + alive_scores) / (
+        counts_dead_at_step + counts_alive_at_step
+    )
+
+    return np.trapezoid(np.nan_to_num(scores))
 
 
 @nb.njit(
@@ -83,6 +114,48 @@ def wasserstein_distance_impurity(
     return np.sum(
         np.abs((1 - left_km[: max_time + 1]) - (1 - right_km[: max_time + 1]))
     )
+
+
+# @nb.njit(
+#     nb.types.float64(
+#         nb.types.Array(nb.types.float64, 1, "C", False, aligned=True),
+#         nb.types.Array(nb.types.float64, 1, "C", False, aligned=True),
+#         nb.types.Array(nb.types.float64, 1, "C", False, aligned=True),
+#         nb.types.Array(nb.types.float64, 1, "C", False, aligned=True),
+#     ),
+#     cache=True,
+# )
+# def log_rank_impurity(
+#     at_risk_per_step, death_per_step, death_per_step_left, events_per_step_left
+# ):
+#     n = at_risk_per_step
+#     a = death_per_step_left
+#     m = death_per_step
+
+#     n_a = np.flip(np.cumsum(np.flip(events_per_step_left)))
+
+#     e = np.nan_to_num(m * n_a) / n
+#     var = np.nan_to_num((m * (n - m)) / (n - 1) * (n_a / n) * (1 - (n_a / n)))
+
+#     return np.nan_to_num(np.sum(a - e) / np.sum((var) ** 1 / 2))
+
+
+@nb.njit(
+    nb.types.float64(
+        nb.types.Array(nb.types.float64, 1, "C", False, aligned=True),
+        nb.types.Array(nb.types.float64, 1, "C", False, aligned=True),
+        nb.types.Array(nb.types.float64, 1, "C", False, aligned=True),
+        nb.types.Array(nb.types.float64, 1, "C", False, aligned=True),
+    ),
+    cache=True,
+)
+def log_rank_approximate_impurity(
+    in_risk_set, death_per_step, death_per_step_left, events_per_step_left
+):
+    in_risk_set_left = np.flip(np.cumsum(np.flip(events_per_step_left)))
+    expected = in_risk_set_left / in_risk_set * death_per_step
+    observed_minus_expected = death_per_step_left - expected
+    return np.nan_to_num(observed_minus_expected**2 / expected).sum()
 
 
 @nb.njit(
@@ -153,7 +226,7 @@ def get_best_threshold_on_col(
 
     arg_sort = np.argsort(col)
     times_sort = times[arg_sort]
-    col_sort = col.copy()[arg_sort]
+    col_sort = col[arg_sort]
     events_sort = events[arg_sort]
     weights_sort = weights[arg_sort]
     last_value = col_sort[-1]
@@ -181,9 +254,14 @@ def get_best_threshold_on_col(
 
         weights_right -= weight_i
 
+        if crit_code == 2:
+            at_risk_per_step = np.flip(np.cumsum(np.flip(events_per_step))).astype(
+                np.float64
+            )
+
         if (value_i != col_sort[row_index + 1]) and (value_i != last_value):
-            #left_size = row_index + 1
-            #right_size = n_rows - left_size
+            # left_size = row_index + 1
+            # right_size = n_rows - left_size
             weights_left = weights_total - weights_right
 
             if (
@@ -202,7 +280,7 @@ def get_best_threshold_on_col(
                         max_time,
                     )
 
-                else:
+                elif crit_code == 1:
                     impurity = integrated_brier_score_administrative_impurity(
                         death_per_step_left,
                         exit_per_step_left,
@@ -212,7 +290,14 @@ def get_best_threshold_on_col(
                         weights_right,
                         max_time,
                     )
-                # to do, add log rank impurity
+
+                else:
+                    impurity = log_rank_approximate_impurity(
+                        at_risk_per_step,
+                        death_per_step,
+                        death_per_step_left,
+                        exit_per_step_left,
+                    )
 
                 if impurity > best_impurity:
                     best_impurity = impurity
@@ -236,7 +321,7 @@ def get_best_threshold_on_col(
         nb.types.int64,
     ),
     cache=True,
-    parallel=True,
+    # parallel=True,
 )
 def get_best_threshold_on_data(
     X: np.ndarray[tuple[int, int], np.dtype[np.float64]],
@@ -267,7 +352,7 @@ def get_best_threshold_on_data(
     best_col_thresholds = np.zeros(n_cols)
     weights_total = weights.sum()
 
-    for col_index in nb.prange(n_cols):
+    for col_index in range(n_cols):  # nb.prange(n_cols):
         col = X[:, col_index]
         if col_index in cols_to_examine:
             best_threshold, best_proxy_impurity = get_best_threshold_on_col(
