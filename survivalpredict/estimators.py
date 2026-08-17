@@ -3248,7 +3248,7 @@ class RandomForestSurvival(_SurvivalPredictBase, _KaplanMeierBase):
     def __init__(
         self,
         *,
-        n_estimators: int = 100,
+        n_estimators: int = 50,
         bootstrap: bool = True,
         n_jobs: Optional[int] = None,
         max_samples: None | int | float = None,
@@ -3330,7 +3330,7 @@ class RandomForestSurvival(_SurvivalPredictBase, _KaplanMeierBase):
 
         trees = [clone(estimator) for _ in range(self.n_estimators)]
 
-        self.estimators_ = Parallel(n_jobs=self.n_jobs,)( #prefer="threads"
+        self.estimators_ = Parallel(n_jobs=self.n_jobs)(  # ,prefer="threads"
             delayed(build_tree)(
                 t,
                 self.bootstrap,
