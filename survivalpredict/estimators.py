@@ -3,6 +3,7 @@ import warnings
 from math import ceil
 from numbers import Integral, Real
 from typing import Any, Callable, Literal, Optional, Union
+from inspect import signature
 
 from joblib.parallel import Parallel, delayed
 import numpy as np
@@ -85,6 +86,8 @@ __all__ = [
     "CoxPHElasticNet",
     "MultiTaskLogisticRegression",
     "DecisionTreeSurvival",
+    "RandomForestSurvival",
+    "AdaBoostingSurvival",
 ]
 
 
@@ -2981,7 +2984,7 @@ class DecisionTreeSurvival(_SurvivalPredictBase, _KaplanMeierBase):
             StrOptions({"sqrt", "log2"}),
             None,
         ],
-        "random_state": ["random_state"],
+        "random_state": [Integral],
         "max_leaf_nodes": [Interval(Integral, 2, None, closed="left"), None],
         "min_impurity_decrease": [Interval(Real, 0.0, None, closed="left")],
         "ccp_alpha": [Interval(Real, 0.0, None, closed="left")],
@@ -3236,7 +3239,7 @@ class RandomForestSurvival(_SurvivalPredictBase, _KaplanMeierBase):
         "n_estimators": [Interval(Integral, 1, None, closed="left")],
         "bootstrap": ["boolean"],
         "n_jobs": [Integral, None],
-        "random_state": ["random_state"],
+        "random_state": [Integral],
         "max_samples": [
             None,
             Interval(RealNotInt, 0.0, None, closed="neither"),

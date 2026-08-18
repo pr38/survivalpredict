@@ -153,7 +153,6 @@ def integrated_brier_score_administrative_impurity(
         nb.types.float64,
     ),
     cache=True,
-    parallel=True,
 )
 def get_best_threshold_on_col(
     col: np.ndarray[tuple[int], np.dtype[np.float64]],
@@ -185,7 +184,7 @@ def get_best_threshold_on_col(
     death_per_step_left = np.zeros(max_time + 1)
     exit_per_step_left = np.zeros(max_time + 1)
 
-    for row_index in nb.prange(n_rows - 1):
+    for row_index in range(n_rows - 1):
 
         value_i = col_sort[row_index]
         times_i = times_sort[row_index]
@@ -299,7 +298,7 @@ def get_best_threshold_on_data(
     best_col_thresholds = np.zeros(n_cols)
     weights_total = weights.sum()
 
-    for col_index in range(n_cols):  # nb.prange(n_cols):
+    for col_index in nb.prange(n_cols):
         col = X[:, col_index]
         if col_index in cols_to_examine:
             best_threshold, best_proxy_impurity = get_best_threshold_on_col(
