@@ -33,7 +33,7 @@ def get_kaplan_meier_survival_curve(
         death_per_step,
         at_risk_per_step,
     )
-    hazard_at_step = np.where(death_per_step != 0, hazard_at_step, 0)
+    hazard_at_step = np.where(at_risk_per_step != 0, hazard_at_step, 0)
 
     if return_hazard:
         output = hazard_at_step
@@ -89,7 +89,7 @@ def get_kaplan_meier_survival_curve_with_weights(
         death_per_step,
         at_risk_per_step,
     )
-    hazard_at_step = np.where(death_per_step != 0, hazard_at_step, 0)
+    hazard_at_step = np.where(at_risk_per_step != 0, hazard_at_step, 0)
     if return_hazard:
         output = hazard_at_step
     else:  # return survival
@@ -144,7 +144,7 @@ def get_kaplan_meier_survival_curve_with_left_censorship(
     if return_hazard:
         output = hazard_at_step
     else:  # return survival
-        hazard_at_step = np.where(death_per_step != 0, hazard_at_step, 0)
+        hazard_at_step = np.where(at_risk_per_step != 0, hazard_at_step, 0)
         output = np.cumprod(1 - hazard_at_step)  # survival_curve
 
     if len(output) > max_time + 1:
@@ -199,7 +199,7 @@ def get_kaplan_meier_survival_curve_with_weights_and_left_censorship(
     if return_hazard:
         output = hazard_at_step
     else:  # return survival
-        hazard_at_step = np.where(death_per_step != 0, hazard_at_step, 0)
+        hazard_at_step = np.where(at_risk_per_step != 0, hazard_at_step, 0)
         output = np.cumprod(1 - hazard_at_step)  # survival_curve
 
     if len(output) > max_time + 1:

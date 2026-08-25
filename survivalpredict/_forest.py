@@ -67,6 +67,7 @@ def build_tree(
     events,
     sample_weight,
     n_samples_bootstrap=None,
+    times_start=None,
 ):
     """
     Private function used to fit a single tree in parallel.
@@ -89,6 +90,7 @@ def build_tree(
             events,
             sample_weight=sample_weight_tree,
             check_input=False,
+            times_start=times_start
         )
     else:
         tree._fit(
@@ -97,6 +99,7 @@ def build_tree(
             events,
             sample_weight=sample_weight,
             check_input=False,
+            times_start=times_start
         )
 
     return tree

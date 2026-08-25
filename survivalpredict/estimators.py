@@ -1,12 +1,12 @@
 import itertools
 import warnings
+from inspect import signature
 from math import ceil
 from numbers import Integral, Real
 from typing import Any, Callable, Literal, Optional, Union
-from inspect import signature
 
-from joblib.parallel import Parallel, delayed
 import numpy as np
+from joblib.parallel import Parallel, delayed
 from sklearn.base import BaseEstimator, _fit_context, clone
 from sklearn.neighbors import NearestNeighbors
 from sklearn.neighbors._base import VALID_METRICS as VALID_METRICS_KNN
@@ -75,6 +75,7 @@ from ._stratification import (
     split_and_preprocess_data_by_strata,
 )
 from ._tree import get_survival_tree
+from ._tree_left_censorship import get_survival_tree_left_censorship
 
 __all__ = [
     "CoxProportionalHazard",
@@ -87,7 +88,6 @@ __all__ = [
     "MultiTaskLogisticRegression",
     "DecisionTreeSurvival",
     "RandomForestSurvival",
-    "AdaBoostingSurvival",
 ]
 
 
@@ -372,7 +372,7 @@ class CoxProportionalHazard(_SurvivalPredictBase, _ProportionalHazardBase):
                 time_return_inverse_strata,
                 n_unique_times_strata,
                 event_counts_at_times_strata,
-                _,
+                times_start_strata,
                 time_start_return_inverse_strata,
             ) = preprocess_data_for_cox_ph(X, times, events, strata, times_start)
 
@@ -430,8 +430,8 @@ class CoxProportionalHazard(_SurvivalPredictBase, _ProportionalHazardBase):
                 time_return_inverse_strata,
                 n_unique_times_strata,
                 event_counts_at_times_strata,
-                _,
-                _,
+                times_start_strata,
+                time_start_return_inverse_strata,
             ) = preprocess_data_for_cox_ph(X, times, events, strata)
 
             if self.ties == "breslow":
@@ -479,6 +479,10 @@ class CoxProportionalHazard(_SurvivalPredictBase, _ProportionalHazardBase):
         self.coef_ = coefs
         self.n_log_likelihood = loss
 
+        if times_start is None:
+            # to avoid unnecessary compute on _get_breslow_base_hazard
+            times_start_strata = [None for i in range(n_strata)]
+
         if strata is not None:
             self._uses_strata = True
             self.seen_strata = seen_strata
@@ -492,6 +496,7 @@ class CoxProportionalHazard(_SurvivalPredictBase, _ProportionalHazardBase):
                     times_strata[s_i],
                     events_strata[s_i],
                     self._max_time_observed,
+                    times_start_strata[s_i],
                 )
 
             self._breslow_base_survival = np.exp(
@@ -502,7 +507,7 @@ class CoxProportionalHazard(_SurvivalPredictBase, _ProportionalHazardBase):
 
             risk = np.exp(np.dot(X_strata[0], self.coef_))
             self._breslow_base_hazard = _get_breslow_base_hazard(
-                risk, times, events, self._max_time_observed
+                risk, times, events, self._max_time_observed, times_start
             )
             self._breslow_base_survival = np.exp(-self._breslow_base_hazard.cumsum())
 
@@ -664,7 +669,7 @@ class CoxProportionalHazard(_SurvivalPredictBase, _ProportionalHazardBase):
             time_return_inverse_strata,
             n_unique_times_strata,
             _,
-            _,
+            times_start_strata,
             time_start_return_inverse_strata,
         ) = preprocess_data_for_cox_ph(
             X, times, events, strata=strata, times_start=times_start
@@ -2066,9 +2071,13 @@ class CoxNeuralNetPH(_SurvivalPredictBase, _ProportionalHazardBase):
             time_return_inverse_strata,
             n_unique_times_strata,
             _,
-            _,
+            times_start_strata,
             time_start_return_inverse_strata,
         ) = preprocess_data_for_cox_ph(X, times, events, strata, times_start)
+
+        if times_start is None:
+            # to avoid unnecessary compute on _get_breslow_base_hazard
+            times_start_strata = [None for i in range(n_strata)]
 
         if uses_left_censorship is False:
             time_start_return_inverse_strata = None
@@ -2119,6 +2128,7 @@ class CoxNeuralNetPH(_SurvivalPredictBase, _ProportionalHazardBase):
                     times_strata[s_i],
                     events_strata[s_i],
                     self._max_time_observed,
+                    times_start_strata[s_i],
                 )
 
             self._breslow_base_survival = np.exp(
@@ -2128,7 +2138,7 @@ class CoxNeuralNetPH(_SurvivalPredictBase, _ProportionalHazardBase):
         else:
             risk = get_relative_risk_from_cox_net_ph_weights(X, self.coef_)
             self._breslow_base_hazard = _get_breslow_base_hazard(
-                risk, times, events, self._max_time_observed
+                risk, times, events, self._max_time_observed, times_start
             )
             self._breslow_base_survival = np.exp(-self._breslow_base_hazard.cumsum())
 
@@ -2984,10 +2994,11 @@ class DecisionTreeSurvival(_SurvivalPredictBase, _KaplanMeierBase):
             StrOptions({"sqrt", "log2"}),
             None,
         ],
-        "random_state": [Integral],
+        "random_state": [Integral, None],
         "max_leaf_nodes": [Interval(Integral, 2, None, closed="left"), None],
         "min_impurity_decrease": [Interval(Real, 0.0, None, closed="left")],
         "ccp_alpha": [Interval(Real, 0.0, None, closed="left")],
+        "parallel_split_finding": ["boolean"],
     }
 
     def __init__(
@@ -3006,6 +3017,7 @@ class DecisionTreeSurvival(_SurvivalPredictBase, _KaplanMeierBase):
         max_leaf_nodes: Optional[int] = None,
         min_impurity_decrease: float = 0.0,
         ccp_alpha: float = 0.0,
+        parallel_split_finding: bool = True,
     ):
 
         self.criterion = criterion
@@ -3019,6 +3031,7 @@ class DecisionTreeSurvival(_SurvivalPredictBase, _KaplanMeierBase):
         self.random_state = random_state
         self.min_impurity_decrease = min_impurity_decrease
         self.ccp_alpha = ccp_alpha
+        self.parallel_split_finding = parallel_split_finding
 
     @_fit_context(prefer_skip_nested_validation=True)
     def fit(
@@ -3027,6 +3040,7 @@ class DecisionTreeSurvival(_SurvivalPredictBase, _KaplanMeierBase):
         times: np.ndarray[tuple[int], np.dtype[np.int64]],
         events: np.ndarray[tuple[int], np.dtype[np.bool_]],
         check_input: bool = True,
+        times_start: Optional[np.ndarray[tuple[int], np.dtype[np.int64]]] = None,
         sample_weight: np.ndarray[tuple[int], np.dtype[np.float64]] = None,
     ):
         """
@@ -3049,6 +3063,9 @@ class DecisionTreeSurvival(_SurvivalPredictBase, _KaplanMeierBase):
         check_input : bool, default=True
             If True, validates and casts inputs.
 
+        times_start : array-like of shape (n_samples, dtype=np.int64), default=None
+            Starting point for observation. If not passed in, all times_start times are assumed to be 0.
+
         sample_weight:
             array-like of shape (n_samples,), default=None
             Sample weights.
@@ -3060,8 +3077,8 @@ class DecisionTreeSurvival(_SurvivalPredictBase, _KaplanMeierBase):
         """
 
         if check_input:
-            X, times, events, _, __ = self._validate_for_fit(
-                X, times, events, None, None
+            X, times, events, _, times_start = self._validate_for_fit(
+                X, times, events, None, times_start
             )
 
         check_random_state(self.random_state)
@@ -3133,23 +3150,45 @@ class DecisionTreeSurvival(_SurvivalPredictBase, _KaplanMeierBase):
             weights = sample_weight
             self._max_time_observed = np.max(times[sample_weight != 0.0])
 
-        self.tree_ = get_survival_tree(
-            X,
-            times,
-            events,
-            weights,
-            min_samples_leaf,
-            max_depth,
-            min_samples_split,
-            crit_code,
-            min_impurity_decrease,
-            min_weight_leaf,
-            max_features,
-            max_leaf_nodes,
-            random_state,
-            self._max_time_observed,
-            ccp_alpha,
-        )
+        if times_start is None:
+            self.tree_ = get_survival_tree(
+                X,
+                times,
+                events,
+                weights,
+                min_samples_leaf,
+                max_depth,
+                min_samples_split,
+                crit_code,
+                min_impurity_decrease,
+                min_weight_leaf,
+                max_features,
+                max_leaf_nodes,
+                random_state,
+                self._max_time_observed,
+                ccp_alpha,
+                self.parallel_split_finding,
+            )
+        else:
+            self.tree_ = get_survival_tree_left_censorship(
+                X,
+                times,
+                times_start,
+                events,
+                weights,
+                min_samples_leaf,
+                max_depth,
+                min_samples_split,
+                crit_code,
+                min_impurity_decrease,
+                min_weight_leaf,
+                max_features,
+                max_leaf_nodes,
+                random_state,
+                self._max_time_observed,
+                ccp_alpha,
+                self.parallel_split_finding,
+            )
 
         self.is_fitted_ = True
         return self
@@ -3245,7 +3284,34 @@ class RandomForestSurvival(_SurvivalPredictBase, _KaplanMeierBase):
             Interval(RealNotInt, 0.0, None, closed="neither"),
             Interval(Integral, 1, None, closed="left"),
         ],
-        **DecisionTreeSurvival._parameter_constraints,
+        "criterion": [
+            StrOptions(
+                {
+                    "integrated_brier_score_administrative",
+                    "wasserstein_distance",
+                    "log_rank",
+                }
+            )
+        ],
+        "splitter": [StrOptions({"best"})],  # 'random' to-do
+        "max_depth": [Interval(Integral, 1, None, closed="left"), None],
+        "min_samples_split": [
+            Interval(Integral, 2, None, closed="left"),
+        ],
+        "min_samples_leaf": [
+            Interval(Integral, 1, None, closed="left"),
+        ],
+        "min_weight_fraction_leaf": [Interval(Real, 0.0, 0.5, closed="both")],
+        "max_features": [
+            Interval(Integral, 1, None, closed="left"),
+            Interval(RealNotInt, 0.0, 1.0, closed="right"),
+            StrOptions({"sqrt", "log2"}),
+            None,
+        ],
+        "random_state": [Integral, None],
+        "max_leaf_nodes": [Interval(Integral, 2, None, closed="left"), None],
+        "min_impurity_decrease": [Interval(Real, 0.0, None, closed="left")],
+        "ccp_alpha": [Interval(Real, 0.0, None, closed="left")],
     }
 
     def __init__(
@@ -3294,6 +3360,7 @@ class RandomForestSurvival(_SurvivalPredictBase, _KaplanMeierBase):
         times: np.ndarray[tuple[int], np.dtype[np.int64]],
         events: np.ndarray[tuple[int], np.dtype[np.bool_]],
         check_input: bool = True,
+        times_start: Optional[np.ndarray[tuple[int], np.dtype[np.bool_]]] = None,
         sample_weight: np.ndarray[tuple[int], np.dtype[np.float64]] = None,
     ):
 
@@ -3314,6 +3381,7 @@ class RandomForestSurvival(_SurvivalPredictBase, _KaplanMeierBase):
             random_state=self.random_state,
             min_impurity_decrease=self.min_impurity_decrease,
             ccp_alpha=self.ccp_alpha,
+            parallel_split_finding=False,
         )
 
         if not self.bootstrap and self.max_samples is not None:
@@ -3342,6 +3410,7 @@ class RandomForestSurvival(_SurvivalPredictBase, _KaplanMeierBase):
                 events,
                 sample_weight,
                 n_samples_bootstrap,
+                times_start,
             )
             for t in trees
         )
