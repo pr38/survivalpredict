@@ -603,7 +603,7 @@ class CoxProportionalHazard(_SurvivalPredictBase, _ProportionalHazardBase):
         empirical_bayes: bool = True,
     ) -> "pymc.Model":
         """
-        Returns a pymc model that is equivalent to the initialized Cox Proportional Hazards.
+        Return a pymc model that is equivalent to the initialized Cox Proportional Hazards.
         Allows for generating 'Markov chain Monte Carlo' traces for inference.
 
         Parameters
@@ -627,10 +627,10 @@ class CoxProportionalHazard(_SurvivalPredictBase, _ProportionalHazardBase):
         times_start : array-like of shape (n_samples, dtype=np.int64), default=None
             Starting point for observation. If not passed in, all times_start times are assumed to be 0.
 
-        coefs_sigma: float, default=10.0
+        coefs_sigma : float, default=10.0
             Sigma of the normal distribution used for the coefficients.
 
-        empirical_bayes: bool, default=True.
+        empirical_bayes : bool, default=True
             If True and the class has been fit/trained, the initial coefficient values will be the trained coefficients.
 
         Returns
@@ -1222,7 +1222,7 @@ class ParametricDiscreteTimePH(_SurvivalPredictBase, _ProportionalHazardBase):
         times_start : array-like of shape (n_samples, dtype=np.int64), default=None
             Starting point for observation. If not passed in, all times_start times are assumed to be 0.
 
-        empirical_bayes: bool, default=True.
+        empirical_bayes : bool, default=True
             If True and the class has been fit/trained, the initial coefficient values will be the trained coefficients.
 
         Returns
@@ -2993,12 +2993,12 @@ class DecisionTreeSurvival(_SurvivalPredictBase, _KaplanMeierBase):
         The strategy used to choose the split at each node. Currently ony
         the "best" strategy is available.
 
-    max_depth: int, default=None
+    max_depth : int, default=None
         The maximum depth of the tree. If None, then nodes are expanded
         until all leaves are pure or until all leaves contain less than
         min_samples_split samples.
 
-    min_samples_split: int, default=2
+    min_samples_split : int, default=2
         The minimum number of samples required to split an internal node.
 
     min_samples_leaf : int, default=1
@@ -3046,7 +3046,7 @@ class DecisionTreeSurvival(_SurvivalPredictBase, _KaplanMeierBase):
         subtree with the largest cost complexity that is smaller than
         ``ccp_alpha`` will be chosen. By default, no pruning is performed.
 
-    parallel_split_finding: bool, default=False
+    parallel_split_finding : bool, default=False
         If set to ‘True ’, parallelizes the “best” partition
         search across features. There is an overhead to parallelization,
         and it is advised to parallelize partition search when data is
@@ -3159,8 +3159,7 @@ class DecisionTreeSurvival(_SurvivalPredictBase, _KaplanMeierBase):
         times_start : array-like of shape (n_samples, dtype=np.int64), default=None
             Starting point for observation. If not passed in, all times_start times are assumed to be 0.
 
-        sample_weight:
-            array-like of shape (n_samples,), default=None
+        sample_weight : array-like of shape (n_samples), default=None
             Sample weights.
 
         Returns
@@ -3391,15 +3390,6 @@ class RandomForestSurvival(_SurvivalPredictBase, _KaplanMeierBase):
     n_jobs : int, default=None
         The number of jobs to run in parallel.
 
-    criterion : {"brier_scores", "wasserstein_distance","log_rank"}, default='log_rank'
-        The function to measure the quality of a split. The “log_rank”
-        criterion tries to maximise the chi-squared metric of an approximation
-        for the ‘two-sample log-rank test’, for the difference in survival between
-        populations.The “wasserstein_distance” measures the distance between the
-        Kaplan-Meier curves of possible splits. "brier_scores" looks at the integral of
-        brier scores with adminstrative censoring of the Kaplan-Meier curves
-        for each partition.
-
     max_samples : int or float, default=None
         If bootstrap is True, the number of samples to draw from X
         to train each base estimator.
@@ -3410,16 +3400,25 @@ class RandomForestSurvival(_SurvivalPredictBase, _KaplanMeierBase):
         - If float, then draw `max_samples * X.shape[0]` unweighted samples
           or `max_samples * sample_weight.sum()` weighted samples.
 
+    criterion : {"brier_scores", "wasserstein_distance","log_rank"}, default='log_rank'
+        The function to measure the quality of a split. The “log_rank”
+        criterion tries to maximise the chi-squared metric of an approximation
+        for the ‘two-sample log-rank test’, for the difference in survival between
+        populations.The “wasserstein_distance” measures the distance between the
+        Kaplan-Meier curves of possible splits. "brier_scores" looks at the integral of
+        brier scores with adminstrative censoring of the Kaplan-Meier curves
+        for each partition.
+
     splitter : {"best"}, default="best"
         The strategy used to choose the split at each node. Currently ony
         the "best" strategy is available.
 
-    max_depth: int, default=None
+    max_depth : int, default=None
         The maximum depth of the tree. If None, then nodes are expanded
         until all leaves are pure or until all leaves contain less than
         min_samples_split samples.
 
-    min_samples_split: int, default=2
+    min_samples_split : int, default=2
         The minimum number of samples required to split an internal node.
 
     min_samples_leaf : int, default=1
@@ -3589,8 +3588,7 @@ class RandomForestSurvival(_SurvivalPredictBase, _KaplanMeierBase):
         times_start : array-like of shape (n_samples, dtype=np.int64), default=None
             Starting point for observation. If not passed in, all times_start times are assumed to be 0.
 
-        sample_weight:
-            array-like of shape (n_samples,), default=None
+        sample_weight : array-like of shape (n_samples), default=None
             Sample weights.
 
         Returns
