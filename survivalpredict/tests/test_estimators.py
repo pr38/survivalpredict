@@ -13,6 +13,8 @@ from ..estimators import (
     KNeighborsSurvival,
     ParametricDiscreteTimePH,
     MultiTaskLogisticRegression,
+    DecisionTreeSurvival,
+    RandomForestSurvival,
 )
 
 data = load_iranian_telecom_churn()
@@ -35,6 +37,8 @@ strata = np.random.randint(0, 2, X.shape[0])
         AalenAdditiveHazard,
         CoxPHElasticNet,
         MultiTaskLogisticRegression,
+        DecisionTreeSurvival,
+        RandomForestSurvival,
     ],
 )
 @pytest.mark.parametrize("check_input", [True, False])

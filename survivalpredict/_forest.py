@@ -1,9 +1,10 @@
+import threading
+from numbers import Integral
+from typing import Any, Callable
+from warnings import warn
+
 import numpy as np
 from sklearn.utils import check_random_state
-
-
-from numbers import Integral
-from warnings import warn
 
 
 def get_n_samples_bootstrap(n_samples, max_samples, sample_weight):
@@ -90,7 +91,7 @@ def build_tree(
             events,
             sample_weight=sample_weight_tree,
             check_input=False,
-            times_start=times_start
+            times_start=times_start,
         )
     else:
         tree._fit(
@@ -99,7 +100,22 @@ def build_tree(
             events,
             sample_weight=sample_weight,
             check_input=False,
-            times_start=times_start
+            times_start=times_start,
         )
 
     return tree
+
+
+def _accumulate_prediction(
+    predict: Callable[
+        [np.ndarray[tuple[int, int], np.dtype[np.float64]]],
+        np.ndarray[tuple[int, int], np.dtype[np.float64]],
+    ],
+    X: np.ndarray[tuple[int, int], np.dtype[np.float64]],
+    out: np.ndarray[tuple[int, int], np.dtype[np.float64]],
+    lock: threading.Lock,
+    max_time: int,
+):
+    prediction = predict(X, max_time=max_time)
+    with lock:
+        out += prediction

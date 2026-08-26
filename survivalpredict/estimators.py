@@ -1,4 +1,5 @@
 import itertools
+import threading
 import warnings
 from inspect import signature
 from math import ceil
@@ -50,7 +51,7 @@ from ._discrete_time_ph_estimation import (
     predict_parametric_discrete_time_ph_model,
     train_parametric_discrete_time_ph_model,
 )
-from ._forest import build_tree, get_n_samples_bootstrap
+from ._forest import _accumulate_prediction, build_tree, get_n_samples_bootstrap
 from ._mtlr import (
     convert_hazard_to_survival_mtlr,
     predict_hazard_mtlr,
@@ -3369,14 +3370,14 @@ class RandomForestSurvival(_SurvivalPredictBase, _KaplanMeierBase):
     """
     Random Forest for survival curves.
 
-    Random forest a meta estimator that fits a number of survival
-    decision trees on various sub-samples of the dataset and uses
-    averaging to improve the predictive accuracy and control over-fitting.
-    Trees in the forest use the best split strategy. The sub-sample size is
-    controlled with the `max_samples` parameter if`bootstrap=True` (default),
-    otherwise the whole dataset is used to build each tree. By default, the
-    algorithm examines only a random subset of features to find the split;
-    the `max_features` parameter can change this behaviour.
+    Meta estimator that fits a number of survival decision trees on various
+    sub-samples of the dataset and uses averaging to improve the predictive 
+    accuracy and control over-fitting. Trees in the forest use the best split
+    strategy. The sub-sample size is controlled with the `max_samples` parameter
+    if `bootstrap=True` (default), otherwise the whole dataset is used to build 
+    each tree. By default, the algorithm examines only a random subset of 
+    features to find the split;the `max_features` parameter can change this 
+    behaviour.
 
     Parameters
     ----------
@@ -3388,7 +3389,10 @@ class RandomForestSurvival(_SurvivalPredictBase, _KaplanMeierBase):
         whole dataset is used to build each tree.
 
     n_jobs : int, default=None
-        The number of jobs to run in parallel.
+        The number of jobs to run in parallel. :meth:`fit`, :meth:`predict`,
+        and :meth:`predict_hazard` are all parallelized over the trees.
+        ``None`` means 1 unless in a :obj:`joblib.parallel_backend`
+        context. ``-1`` means using all processors.
 
     max_samples : int or float, default=None
         If bootstrap is True, the number of samples to draw from X
@@ -3480,6 +3484,7 @@ class RandomForestSurvival(_SurvivalPredictBase, _KaplanMeierBase):
     [1] Ishwaran, Hemant & Kogalur, Udaya & Blackstone, Eugene & Lauer, Michael.
     (2008). Random survival forests. The Annals of Applied Statistics. 2. 10.1214/08-AOAS169.
     """
+
     _parameter_constraints: dict = {
         "n_estimators": [Interval(Integral, 1, None, closed="left")],
         "bootstrap": ["boolean"],
@@ -3673,7 +3678,7 @@ class RandomForestSurvival(_SurvivalPredictBase, _KaplanMeierBase):
         Returns
         -------
         ndarray of shape (n_samples, max_time), dtype=np.float64
-            The estimated survival curves, the left-most column is the 
+            The estimated survival curves, the left-most column is the
             probability of survival at time 1, and the right-most column
             ends at max_time.
         """
@@ -3684,9 +3689,11 @@ class RandomForestSurvival(_SurvivalPredictBase, _KaplanMeierBase):
 
         y_hat = np.zeros((X.shape[0], max_time))
 
-        # todo make parallel without allocating too much mem
-        for e in self.estimators_:
-            y_hat += e.predict(X, max_time)
+        lock = threading.Lock()
+        Parallel(n_jobs=self.n_jobs, require="sharedmem")(
+            delayed(_accumulate_prediction)(e.predict, X, y_hat, lock, max_time)
+            for e in self.estimators_
+        )
 
         y_hat /= len(self.estimators_)
 
@@ -3722,9 +3729,11 @@ class RandomForestSurvival(_SurvivalPredictBase, _KaplanMeierBase):
 
         y_hat = np.zeros((X.shape[0], max_time))
 
-        # todo make parallel without allocating too much mem
-        for e in self.estimators_:
-            y_hat += e.predict_hazard(X, max_time)
+        lock = threading.Lock()
+        Parallel(n_jobs=self.n_jobs, require="sharedmem")(
+            delayed(_accumulate_prediction)(e.predict_hazard, X, y_hat, lock, max_time)
+            for e in self.estimators_
+        )
 
         y_hat /= len(self.estimators_)
 
