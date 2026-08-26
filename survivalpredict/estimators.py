@@ -2969,11 +2969,107 @@ class MultiTaskLogisticRegression(_SurvivalPredictBase):
 
 
 class DecisionTreeSurvival(_SurvivalPredictBase, _KaplanMeierBase):
+    """
+    Decision Tree for survival curves.
+
+    Non-parametric recursive partitioning builder for survival curves.
+    Various criteria for partitioning evaluation are available [1].
+    There is no support for missing data. Both left and right censorship are supported.
+    On estimation, the associated Kaplan–Meier curve for the assigned
+    partition/leaf is returned.
+
+    Parameters
+    ----------
+    criterion : {"brier_scores", "wasserstein_distance","log_rank"}, default='log_rank'
+        The function to measure the quality of a split. The “log_rank”
+        criterion tries to maximise the chi-squared metric of an approximation
+        for the ‘two-sample log-rank test’, for the difference in survival between
+        populations.The “wasserstein_distance” measures the distance between the
+        Kaplan-Meier curves of possible splits. "brier_scores" looks at the integral of
+        brier scores with adminstrative censoring of the Kaplan-Meier curves
+        for each partition.
+
+    splitter : {"best"}, default="best"
+        The strategy used to choose the split at each node. Currently ony
+        the "best" strategy is available.
+
+    max_depth: int, default=None
+        The maximum depth of the tree. If None, then nodes are expanded
+        until all leaves are pure or until all leaves contain less than
+        min_samples_split samples.
+
+    min_samples_split: int, default=2
+        The minimum number of samples required to split an internal node.
+
+    min_samples_leaf : int, default=1
+        The minimum number of samples required to be at a leaf node.
+        A split point at any depth will only be considered if it leaves at
+        least ``min_samples_leaf`` training samples in each of the left and
+        right branches.
+
+    min_weight_fraction_leaf : float, default=0.0
+        The minimum weighted fraction of the sum total of weights (of all
+        the input samples) required to be at a leaf node. Samples have
+        equal weight when sample_weight is not provided.
+
+    max_features : int, float or {"sqrt", "log2"}, default=None
+        The number of features to consider when looking for the best split:
+
+        - If int, then consider `max_features` features at each split.
+        - If float, then `max_features` is a fraction and
+          `max(1, int(max_features * n_features_in_))` features are considered at each
+          split.
+        - If "sqrt", then `max_features=sqrt(n_features)`.
+        - If "log2", then `max_features=log2(n_features)`.
+        - If None, then `max_features=n_features`.
+
+    random_state : int or None, default=None
+        Controls the randomness of the estimator. The features are always
+        randomly permuted at each split, even if ``splitter`` is set to
+        ``"best"``. When ``max_features < n_features``, the algorithm will
+        select ``max_features`` at random at each split before finding the best
+        split among them. But the best found split may vary across different
+        runs, even if ``max_features=n_features``.
+
+    max_leaf_nodes : int, default=None
+        Grow a tree with ``max_leaf_nodes`` in best-first fashion.
+        Best nodes are defined as relative reduction in impurity.
+        If None then unlimited number of leaf nodes.
+
+    min_impurity_decrease : float, default=0.0
+        A node will be split if this split induces a decrease of the impurity
+        greater than or equal to this value.
+        Uses "integrated_brier_score_administrative" for each node.
+
+    ccp_alpha : non-negative float, default=0.0
+        Complexity parameter used for Minimal Cost-Complexity Pruning. The
+        subtree with the largest cost complexity that is smaller than
+        ``ccp_alpha`` will be chosen. By default, no pruning is performed.
+
+    parallel_split_finding: bool, default=False
+        If set to ‘True ’, parallelizes the “best” partition
+        search across features. There is an overhead to parallelization,
+        and it is advised to parallelize partition search when data is
+        not small and only a single tree is being built at a time.
+
+    Attributes
+    ----------
+    tree_ : sklearn.tree._tree.Tree
+        The underlying Tree object.
+
+    References
+    ----------
+
+    [1] Shimokawa A, Kawasaki Y, Miyaoka E. Comparison of splitting methods on
+    survival tree. Int J Biostat. 2015 May;11(1):175-88.
+    doi: 10.1515/ijb-2014-0029. PMID: 25849798.
+    """
+
     _parameter_constraints: dict = {
         "criterion": [
             StrOptions(
                 {
-                    "integrated_brier_score_administrative",
+                    "brier_scores",
                     "wasserstein_distance",
                     "log_rank",
                 }
@@ -3005,7 +3101,7 @@ class DecisionTreeSurvival(_SurvivalPredictBase, _KaplanMeierBase):
         self,
         *,
         criterion: Literal[
-            "integrated_brier_score_administrative", "wasserstein_distance", "log_rank"
+            "brier_scores", "wasserstein_distance", "log_rank"
         ] = "log_rank",
         splitter: Literal["best"] = "best",
         max_depth: Optional[int] = None,
@@ -3017,7 +3113,7 @@ class DecisionTreeSurvival(_SurvivalPredictBase, _KaplanMeierBase):
         max_leaf_nodes: Optional[int] = None,
         min_impurity_decrease: float = 0.0,
         ccp_alpha: float = 0.0,
-        parallel_split_finding: bool = True,
+        parallel_split_finding: bool = False,
     ):
 
         self.criterion = criterion
@@ -3057,9 +3153,6 @@ class DecisionTreeSurvival(_SurvivalPredictBase, _KaplanMeierBase):
         events : array-like of shape (n_samples), dtype=np.bool_
             Experianed event.
 
-        strata : array-like of shape (n_samples,), dtype=np.int64, default=None
-            If passed in, associated strata for per observation.
-
         check_input : bool, default=True
             If True, validates and casts inputs.
 
@@ -3089,7 +3182,7 @@ class DecisionTreeSurvival(_SurvivalPredictBase, _KaplanMeierBase):
 
         if self.criterion == "wasserstein_distance":
             crit_code = 0
-        elif self.criterion == "integrated_brier_score_administrative":
+        elif self.criterion == "brier_scores":
             crit_code = 1
         else:
             crit_code = 2
@@ -3274,11 +3367,124 @@ class DecisionTreeSurvival(_SurvivalPredictBase, _KaplanMeierBase):
 
 
 class RandomForestSurvival(_SurvivalPredictBase, _KaplanMeierBase):
+    """
+    Random Forest for survival curves.
+
+    Random forest a meta estimator that fits a number of survival
+    decision trees on various sub-samples of the dataset and uses
+    averaging to improve the predictive accuracy and control over-fitting.
+    Trees in the forest use the best split strategy. The sub-sample size is
+    controlled with the `max_samples` parameter if`bootstrap=True` (default),
+    otherwise the whole dataset is used to build each tree. By default, the
+    algorithm examines only a random subset of features to find the split;
+    the `max_features` parameter can change this behaviour.
+
+    Parameters
+    ----------
+    n_estimators : int, default=50
+        The number of trees in the forest.
+
+    bootstrap : bool, default=True
+        Whether bootstrap samples are used when building trees. If False, the
+        whole dataset is used to build each tree.
+
+    n_jobs : int, default=None
+        The number of jobs to run in parallel.
+
+    criterion : {"brier_scores", "wasserstein_distance","log_rank"}, default='log_rank'
+        The function to measure the quality of a split. The “log_rank”
+        criterion tries to maximise the chi-squared metric of an approximation
+        for the ‘two-sample log-rank test’, for the difference in survival between
+        populations.The “wasserstein_distance” measures the distance between the
+        Kaplan-Meier curves of possible splits. "brier_scores" looks at the integral of
+        brier scores with adminstrative censoring of the Kaplan-Meier curves
+        for each partition.
+
+    max_samples : int or float, default=None
+        If bootstrap is True, the number of samples to draw from X
+        to train each base estimator.
+
+        - If None (default), then draw `X.shape[0]` samples irrespective of
+          `sample_weight`.
+        - If int, then draw `max_samples` samples.
+        - If float, then draw `max_samples * X.shape[0]` unweighted samples
+          or `max_samples * sample_weight.sum()` weighted samples.
+
+    splitter : {"best"}, default="best"
+        The strategy used to choose the split at each node. Currently ony
+        the "best" strategy is available.
+
+    max_depth: int, default=None
+        The maximum depth of the tree. If None, then nodes are expanded
+        until all leaves are pure or until all leaves contain less than
+        min_samples_split samples.
+
+    min_samples_split: int, default=2
+        The minimum number of samples required to split an internal node.
+
+    min_samples_leaf : int, default=1
+        The minimum number of samples required to be at a leaf node.
+        A split point at any depth will only be considered if it leaves at
+        least ``min_samples_leaf`` training samples in each of the left and
+        right branches.
+
+    min_weight_fraction_leaf : float, default=0.0
+        The minimum weighted fraction of the sum total of weights (of all
+        the input samples) required to be at a leaf node. Samples have
+        equal weight when sample_weight is not provided.
+
+    max_features : int, float or {"sqrt", "log2"}, default=None
+        The number of features to consider when looking for the best split:
+
+        - If int, then consider `max_features` features at each split.
+        - If float, then `max_features` is a fraction and
+          `max(1, int(max_features * n_features_in_))` features are considered at each
+          split.
+        - If "sqrt", then `max_features=sqrt(n_features)`.
+        - If "log2", then `max_features=log2(n_features)`.
+        - If None, then `max_features=n_features`.
+
+    random_state : int or None, default=None
+        Controls the randomness of the estimator. The features are always
+        randomly permuted at each split, even if ``splitter`` is set to
+        ``"best"``. When ``max_features < n_features``, the algorithm will
+        select ``max_features`` at random at each split before finding the best
+        split among them. But the best found split may vary across different
+        runs, even if ``max_features=n_features``.
+
+    max_leaf_nodes : int, default=None
+        Grow a tree with ``max_leaf_nodes`` in best-first fashion.
+        Best nodes are defined as relative reduction in impurity.
+        If None then unlimited number of leaf nodes.
+
+    min_impurity_decrease : float, default=0.0
+        A node will be split if this split induces a decrease of the impurity
+        greater than or equal to this value.
+        Uses "integrated_brier_score_administrative" for each node.
+
+    ccp_alpha : non-negative float, default=0.0
+        Complexity parameter used for Minimal Cost-Complexity Pruning. The
+        subtree with the largest cost complexity that is smaller than
+        ``ccp_alpha`` will be chosen. By default, no pruning is performed.
+
+    Attributes
+    ----------
+    estimator_ : :class:`~survivalpredict.estimators.DecisionTreeSurvival`
+        The child estimator template used to create the collection of fitted
+        sub-estimators.
+
+    estimators_ : list of DecisionTreeSurvival
+        The collection of fitted sub-estimators.
+
+    References
+    ----------
+    [1] Ishwaran, Hemant & Kogalur, Udaya & Blackstone, Eugene & Lauer, Michael.
+    (2008). Random survival forests. The Annals of Applied Statistics. 2. 10.1214/08-AOAS169.
+    """
     _parameter_constraints: dict = {
         "n_estimators": [Interval(Integral, 1, None, closed="left")],
         "bootstrap": ["boolean"],
         "n_jobs": [Integral, None],
-        "random_state": [Integral],
         "max_samples": [
             None,
             Interval(RealNotInt, 0.0, None, closed="neither"),
@@ -3287,7 +3493,7 @@ class RandomForestSurvival(_SurvivalPredictBase, _KaplanMeierBase):
         "criterion": [
             StrOptions(
                 {
-                    "integrated_brier_score_administrative",
+                    "brier_scores",
                     "wasserstein_distance",
                     "log_rank",
                 }
@@ -3322,7 +3528,7 @@ class RandomForestSurvival(_SurvivalPredictBase, _KaplanMeierBase):
         n_jobs: Optional[int] = None,
         max_samples: None | int | float = None,
         criterion: Literal[
-            "integrated_brier_score_administrative", "wasserstein_distance", "log_rank"
+            "brier_scores", "wasserstein_distance", "log_rank"
         ] = "log_rank",
         splitter: Literal["best"] = "best",
         max_depth: Optional[int] = None,
@@ -3363,6 +3569,35 @@ class RandomForestSurvival(_SurvivalPredictBase, _KaplanMeierBase):
         times_start: Optional[np.ndarray[tuple[int], np.dtype[np.bool_]]] = None,
         sample_weight: np.ndarray[tuple[int], np.dtype[np.float64]] = None,
     ):
+        """
+        Fit model.
+
+        Parameters
+        ----------
+        X : array-like of shape (n_samples, n_features)
+            Training data.
+
+        times : array-like of shape (n_samples), dtype=np.int64
+            Point in time last observed.
+
+        events : array-like of shape (n_samples), dtype=np.bool_
+            Experianed event.
+
+        check_input : bool, default=True
+            If True, validates and casts inputs.
+
+        times_start : array-like of shape (n_samples, dtype=np.int64), default=None
+            Starting point for observation. If not passed in, all times_start times are assumed to be 0.
+
+        sample_weight:
+            array-like of shape (n_samples,), default=None
+            Sample weights.
+
+        Returns
+        -------
+        object
+            Fitted Estimator.
+        """
 
         if check_input:
             X, times, events, _, __ = self._validate_for_fit(
@@ -3440,8 +3675,9 @@ class RandomForestSurvival(_SurvivalPredictBase, _KaplanMeierBase):
         Returns
         -------
         ndarray of shape (n_samples, max_time), dtype=np.float64
-            The estimated survival curves, the left-most column is the probability of survival at time 1,
-            and the right-most column ends at max_time.
+            The estimated survival curves, the left-most column is the 
+            probability of survival at time 1, and the right-most column
+            ends at max_time.
         """
 
         check_is_fitted(self)
