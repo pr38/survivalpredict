@@ -69,6 +69,10 @@ def build_sklearn_pipeline_target(
         Returns a numpy array that survivalpredict knows how to unpack, while
         allowing said numpy array to flow through the various machinery of
         scikit-learn.
+
+    See Also
+    --------
+    survivalpredict.pipeline.SklearnSurvivalPipeline
     """
     times = validate_times_array(times)
     events = _as_bool_np_array(events)
@@ -146,6 +150,13 @@ class SklearnSurvivalPipeline(_BaseComposition):
         to the pipeline cannot be inspected directly. Use the attribute
         named_steps or steps to inspect estimators within the pipeline. Caching
         the transformers is advantageous when fitting is time consuming.
+
+    See Also
+    --------
+    sklearn.pipeline.Pipeline : Scikit-learn equivalent.
+    survivalpredict.pipeline.build_sklearn_pipeline_target : Target/y.
+    survivalpredict.pipeline.make_sklearn_survival_pipeline : Utility builder for SklearnSurvivalPipeline.
+
     """
     _parameter_constraints: dict = {
         "steps": [list, Hidden(tuple)],
@@ -389,6 +400,11 @@ def make_sklearn_survival_pipeline(
         inspected directly. Use the attribute named_steps or steps to inspect
         estimators within the pipeline. Caching the transformers is advantageous
         when fitting is time consuming.
+
+    See Also
+    --------
+    sklearn.pipeline.make_pipeline : Scikit-learn equivalent.
+    survivalpredict.pipeline.SklearnSurvivalPipeline
     """
     max_time = _as_int(max_time, "max_time")
 

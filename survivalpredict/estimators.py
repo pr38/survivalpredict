@@ -260,6 +260,12 @@ class CoxProportionalHazard(_SurvivalPredictBase, _ProportionalHazardBase):
         to ``tol``, the optimization code checks the dual gap for optimality
         and continues until it is smaller or equal to ``tol``.
 
+    See Also
+    --------
+    survivalpredict.estimators.ParametricDiscreteTimePH : Fully parametric equivalent.
+    survivalpredict.estimators.CoxNeuralNetPH : Deep Cox model.
+    survivalpredict.estimators.CoxPHElasticNet : Cox with ElasticNet/Lasso shrinkage.
+
     Attributes
     ----------
     coef_ : ndarray of ndarray of shape (n_features,)
@@ -843,6 +849,10 @@ class ParametricDiscreteTimePH(_SurvivalPredictBase, _ProportionalHazardBase):
         This class runs a Pymc model under the hood. Durring training we simply find the 'Maximum likelihood estimation'(MLE)/
         'Maximum a posteriori estimation'(MAP). This is the exposed method that PYMC find the MLE/MAP.
 
+    See Also
+    --------
+    survivalpredict.estimators.CoxProportionalHazard : Semi-parametric equivalent.
+
     References
     ----------
 
@@ -1330,6 +1340,10 @@ class KaplanMeierSurvivalEstimator(_SurvivalPredictBase, _KaplanMeierBase):
 
     Kaplan-Meier is a univariate non-parametric survival curve estimation. It
     can be useful as a baseline/dummy estimator.
+
+    See Also
+    --------
+    sklearn.dummy.DummyClassifier
     """
 
     def fit(
@@ -1511,7 +1525,7 @@ class KaplanMeierSurvivalEstimator(_SurvivalPredictBase, _KaplanMeierBase):
         ndarray of shape (n_samples, max_time), dtype=np.float64
             The estimated survival curves, the left-most column is the
             probability of survival at time 1, and the right-most column ends
-            at max_time.
+            at max_time.            
         """
 
         check_is_fitted(self)
@@ -1678,6 +1692,11 @@ class KNeighborsSurvival(_SurvivalPredictBase, _KaplanMeierBase):
         ``None`` means 1 unless in a `joblib.parallel_backend` context.
         ``-1`` means using all processors.
         Doesn't affect `fit` method.
+
+    See Also
+    --------
+    sklearn.neighbors.NearestNeighbors : Neighbor finder used.
+    survivalpredict.estimators.CoxProportionalHazard
     """
 
     _parameter_constraints: dict = {
@@ -1954,6 +1973,11 @@ class CoxNeuralNetPH(_SurvivalPredictBase, _ProportionalHazardBase):
 
     losses_per_steps : list of float
         If track_loss is set to True, loss at each itteration while training.
+
+    See Also
+    --------
+    sklearn.neural_network.MLPClassifier
+    survivalpredict.estimators.CoxProportionalHazard
     """
 
     _parameter_constraints: dict = {
@@ -2332,6 +2356,12 @@ class AalenAdditiveHazard(_SurvivalPredictBase, _KaplanMeierBase):
     _hazard_weights_times : ndarray of ndarray of shape (n)
         Times associated for each interval of time in the  _hazard_weights
         array.
+
+    See Also
+    --------
+    survivalpredict.estimators.MultiTaskLogisticRegression :  A similar estimator that trains on a more rigorous loss/likelihood function.
+    survivalpredict.estimators.KaplanMeierSurvivalEstimator
+    survivalpredict.estimators.CoxProportionalHazard
     """
 
     _parameter_constraints: dict = {
@@ -2504,6 +2534,11 @@ class CoxPHElasticNet(_SurvivalPredictBase, _ProportionalHazardBase):
         The tolerance for the optimization: if the updates are smaller or equal
         to ``tol``, the optimization code checks the dual gap for optimality
         and continues until it is smaller or equal to ``tol``.
+
+    See Also
+    --------
+    survivalpredict.estimators.CoxProportionalHazard
+    sklearn.linear_model.ElasticNet
 
     References
     ----------
@@ -2757,6 +2792,11 @@ class MultiTaskLogisticRegression(_SurvivalPredictBase):
 
     max_iter_seen_ : int
         Number of training iterations point of convergence.
+    
+    See Also
+    --------
+    survivalpredict.estimators.AalenAdditiveHazard : Similar estimator that trains on a heuristic.
+    survivalpredict.estimators.CoxProportionalHazard
 
     References
     ----------
@@ -3057,6 +3097,13 @@ class DecisionTreeSurvival(_SurvivalPredictBase, _KaplanMeierBase):
     ----------
     tree_ : sklearn.tree._tree.Tree
         The underlying Tree object.
+
+    See Also
+    --------
+    sklearn.tree.DecisionTreeClassifier : Scikit-learn equivalent for classification.
+    survivalpredict.estimators.KaplanMeierSurvivalEstimator : Underlying averaging strategy for nodes/parititons.
+    survivalpredict.estimators.RandomForestSurvival : Meta-estimator using trees.
+    survivalpredict.estimators.KNeighborsSurvival : Similar nonparametric estimator.
 
     References
     ----------
@@ -3376,7 +3423,7 @@ class RandomForestSurvival(_SurvivalPredictBase, _KaplanMeierBase):
     strategy. The sub-sample size is controlled with the `max_samples` parameter
     if `bootstrap=True` (default), otherwise the whole dataset is used to build 
     each tree. By default, the algorithm examines only a random subset of 
-    features to find the split;the `max_features` parameter can change this 
+    features to find the split; the `max_features` parameter can change this 
     behaviour.
 
     Parameters
@@ -3478,6 +3525,12 @@ class RandomForestSurvival(_SurvivalPredictBase, _KaplanMeierBase):
 
     estimators_ : list of DecisionTreeSurvival
         The collection of fitted sub-estimators.
+
+    See Also
+    --------
+    survivalpredict.estimators.DecisionTreeSurvival : Underlying estimator.
+    survivalpredict.estimators.KaplanMeierSurvivalEstimator : Underlying averaging strategy for nodes/parititons.
+    sklearn.ensemble.RandomForestClassifier : Scikit-learn equivalent for classification.
 
     References
     ----------
@@ -3731,10 +3784,10 @@ class RandomForestSurvival(_SurvivalPredictBase, _KaplanMeierBase):
 
         lock = threading.Lock()
         Parallel(n_jobs=self.n_jobs, require="sharedmem")(
-            delayed(_accumulate_prediction)(e.predict_hazard, X, y_hat, lock, max_time)
+            delayed(_accumulate_prediction)(e.predict, X, y_hat, lock, max_time)
             for e in self.estimators_
         )
 
         y_hat /= len(self.estimators_)
 
-        return y_hat
+        return convert_kaplan_meier_survival_curve_to_hazards(y_hat)

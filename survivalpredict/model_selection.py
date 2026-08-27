@@ -336,6 +336,10 @@ class Sur_GridSearchCV(Sur_BaseSearchCV):
         trade-off. However computing the scores on the training set can be
         computationally expensive and is not strictly required to select the
         parameters that yield the best generalization performance.
+
+    See Also
+    --------
+    sklearn.model_selection.GridSearchCV : Scikit-learn equivalent.
     """
 
     _parameter_constraints: dict = {
@@ -471,6 +475,10 @@ class Sur_RandomizedSearchCV(Sur_BaseSearchCV):
         trade-off. However computing the scores on the training set can be
         computationally expensive and is not strictly required to select the
         parameters that yield the best generalization performance.
+
+    See Also
+    --------
+    sklearn.model_selection.RandomizedSearchCV : Scikit-learn equivalent.
     """
 
     _parameter_constraints: dict = {
