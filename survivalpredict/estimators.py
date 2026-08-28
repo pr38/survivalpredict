@@ -3054,7 +3054,7 @@ class DecisionTreeSurvival(_SurvivalPredictBase, _KaplanMeierBase):
         the input samples) required to be at a leaf node. Samples have
         equal weight when sample_weight is not provided.
 
-    max_features : int, float or {"sqrt", "log2"}, default=None
+    max_features : int, float or {"sqrt", "log2"}, default="sqrt"
         The number of features to consider when looking for the best split:
 
         - If int, then consider `max_features` features at each split.
@@ -3154,7 +3154,9 @@ class DecisionTreeSurvival(_SurvivalPredictBase, _KaplanMeierBase):
         min_samples_split: int = 2,
         min_samples_leaf: int = 1,
         min_weight_fraction_leaf: float = 0.0,
-        max_features: Union[None, int, float, Literal["sqrt"], Literal["log2"]] = None,
+        max_features: Union[
+            None, int, float, Literal["sqrt"], Literal["log2"]
+        ] = "sqrt",
         random_state: Optional[int] = None,
         max_leaf_nodes: Optional[int] = None,
         min_impurity_decrease: float = 0.0,
