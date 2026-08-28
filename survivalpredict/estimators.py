@@ -3014,7 +3014,7 @@ class DecisionTreeSurvival(_SurvivalPredictBase, _KaplanMeierBase):
     Decision Tree for survival curves.
 
     Non-parametric recursive partitioning builder for survival curves.
-    Various criteria for partitioning evaluation are available [1].
+    Various splitting criteria for partitioning evaluation are available [1].
     There is no support for missing data. Both left and right censorship are supported.
     On estimation, the associated Kaplan–Meier curve for the assigned
     partition/leaf is returned.

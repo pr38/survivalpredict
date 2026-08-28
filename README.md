@@ -88,7 +88,7 @@ The estimators implemented in the `survivalpredict.estimators` sub-module.
     </tr>
         </tr>
         <td>DecisionTreeSurvival</td>
-        <td> Non-parametric recursive partitioning builder for survival curves. Builds a Kaplan–Meier curves for each partition/leaf. 'Log Rank', 'Wasserstein Distance' and 'Brier Scores' based criterion is available.</td>
+        <td> Non-parametric recursive partitioning builder for survival curves. Builds a Kaplan–Meier curves for each partition/leaf. 'Log Rank', 'Wasserstein Distance' and 'Brier Scores' based splitting criterion is available.</td>
         <td>No</td>
         <td>Yes</td>
     </tr>
