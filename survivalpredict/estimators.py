@@ -94,6 +94,9 @@ __all__ = [
 
 class _SurvivalPredictBase(BaseEstimator):
 
+    _doc_link_module = "survivalpredict"
+    _doc_link_template = "https://survivalpredict.readthedocs.io/en/latest/api/generated/{estimator_module}.{estimator_name}.html"
+
     def _validate_for_fit(self, X, times, events, strata=None, times_start=None):
 
         X, times, events = validate_survival_data(X, times, events)
@@ -1525,7 +1528,7 @@ class KaplanMeierSurvivalEstimator(_SurvivalPredictBase, _KaplanMeierBase):
         ndarray of shape (n_samples, max_time), dtype=np.float64
             The estimated survival curves, the left-most column is the
             probability of survival at time 1, and the right-most column ends
-            at max_time.            
+            at max_time.
         """
 
         check_is_fitted(self)
@@ -2792,7 +2795,7 @@ class MultiTaskLogisticRegression(_SurvivalPredictBase):
 
     max_iter_seen_ : int
         Number of training iterations point of convergence.
-    
+
     See Also
     --------
     survivalpredict.estimators.AalenAdditiveHazard : Similar estimator that trains on a heuristic.
@@ -3021,14 +3024,12 @@ class DecisionTreeSurvival(_SurvivalPredictBase, _KaplanMeierBase):
 
     Parameters
     ----------
-    criterion : {"brier_scores", "wasserstein_distance","log_rank"}, default='log_rank'
+    criterion : {"wasserstein_distance","log_rank"}, default='log_rank'
         The function to measure the quality of a split. The “log_rank”
         criterion tries to maximise the chi-squared metric of an approximation
         for the ‘two-sample log-rank test’, for the difference in survival between
         populations.The “wasserstein_distance” measures the distance between the
-        Kaplan-Meier curves of possible splits. "brier_scores" looks at the integral of
-        brier scores with adminstrative censoring of the Kaplan-Meier curves
-        for each partition.
+        Kaplan-Meier curves of possible splits.
 
     splitter : {"best"}, default="best"
         The strategy used to choose the split at each node. Currently ony
@@ -3117,7 +3118,6 @@ class DecisionTreeSurvival(_SurvivalPredictBase, _KaplanMeierBase):
         "criterion": [
             StrOptions(
                 {
-                    "brier_scores",
                     "wasserstein_distance",
                     "log_rank",
                 }
@@ -3148,9 +3148,7 @@ class DecisionTreeSurvival(_SurvivalPredictBase, _KaplanMeierBase):
     def __init__(
         self,
         *,
-        criterion: Literal[
-            "brier_scores", "wasserstein_distance", "log_rank"
-        ] = "log_rank",
+        criterion: Literal["wasserstein_distance", "log_rank"] = "log_rank",
         splitter: Literal["best"] = "best",
         max_depth: Optional[int] = None,
         min_samples_split: int = 2,
@@ -3418,12 +3416,12 @@ class RandomForestSurvival(_SurvivalPredictBase, _KaplanMeierBase):
     Random Forest for survival curves.
 
     Meta estimator that fits a number of survival decision trees on various
-    sub-samples of the dataset and uses averaging to improve the predictive 
+    sub-samples of the dataset and uses averaging to improve the predictive
     accuracy and control over-fitting. Trees in the forest use the best split
     strategy. The sub-sample size is controlled with the `max_samples` parameter
-    if `bootstrap=True` (default), otherwise the whole dataset is used to build 
-    each tree. By default, the algorithm examines only a random subset of 
-    features to find the split; the `max_features` parameter can change this 
+    if `bootstrap=True` (default), otherwise the whole dataset is used to build
+    each tree. By default, the algorithm examines only a random subset of
+    features to find the split; the `max_features` parameter can change this
     behaviour.
 
     Parameters
@@ -3451,14 +3449,12 @@ class RandomForestSurvival(_SurvivalPredictBase, _KaplanMeierBase):
         - If float, then draw `max_samples * X.shape[0]` unweighted samples
           or `max_samples * sample_weight.sum()` weighted samples.
 
-    criterion : {"brier_scores", "wasserstein_distance","log_rank"}, default='log_rank'
+    criterion : {"wasserstein_distance","log_rank"}, default='log_rank'
         The function to measure the quality of a split. The “log_rank”
         criterion tries to maximise the chi-squared metric of an approximation
         for the ‘two-sample log-rank test’, for the difference in survival between
         populations.The “wasserstein_distance” measures the distance between the
-        Kaplan-Meier curves of possible splits. "brier_scores" looks at the integral of
-        brier scores with adminstrative censoring of the Kaplan-Meier curves
-        for each partition.
+        Kaplan-Meier curves of possible splits.
 
     splitter : {"best"}, default="best"
         The strategy used to choose the split at each node. Currently ony
@@ -3550,7 +3546,6 @@ class RandomForestSurvival(_SurvivalPredictBase, _KaplanMeierBase):
         "criterion": [
             StrOptions(
                 {
-                    "brier_scores",
                     "wasserstein_distance",
                     "log_rank",
                 }
@@ -3584,9 +3579,7 @@ class RandomForestSurvival(_SurvivalPredictBase, _KaplanMeierBase):
         bootstrap: bool = True,
         n_jobs: Optional[int] = None,
         max_samples: None | int | float = None,
-        criterion: Literal[
-            "brier_scores", "wasserstein_distance", "log_rank"
-        ] = "log_rank",
+        criterion: Literal["wasserstein_distance", "log_rank"] = "log_rank",
         splitter: Literal["best"] = "best",
         max_depth: Optional[int] = None,
         min_samples_split: int = 2,

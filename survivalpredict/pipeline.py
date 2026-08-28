@@ -118,6 +118,10 @@ def _fit_transform_sp_strata_column_transformer(
 
 
 class SklearnSurvivalPipeline(_BaseComposition):
+
+    _doc_link_module = "survivalpredict"
+    _doc_link_template = "https://survivalpredict.readthedocs.io/en/latest/api/generated/{estimator_module}.{estimator_name}.html"
+
     """
     Scikit-learn compatible pipeline class for survivalpredict.
 
@@ -382,10 +386,10 @@ def make_sklearn_survival_pipeline(
 
     Parameters
     ----------
-    *steps_no_names : list of Estimator objects 
-        List of class instances that are chained together. The class instances 
-        are assumped to be scikit-learn transformers/survivalpredict 
-        StrataBuilders/StrataColumnTransformers. The final instance is assumed to be 
+    *steps_no_names : list of Estimator objects
+        List of class instances that are chained together. The class instances
+        are assumped to be scikit-learn transformers/survivalpredict
+        StrataBuilders/StrataColumnTransformers. The final instance is assumed to be
         a survivalpredict estimator predictor.
 
     max_time : int

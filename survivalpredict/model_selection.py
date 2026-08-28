@@ -20,6 +20,9 @@ __all__ = ["Sur_GridSearchCV", "Sur_RandomizedSearchCV"]
 
 class Sur_BaseSearchCV(MetaEstimatorMixin, BaseEstimator, metaclass=ABCMeta):
 
+    _doc_link_module = "survivalpredict"
+    _doc_link_template = "https://survivalpredict.readthedocs.io/en/latest/api/generated/{estimator_module}.{estimator_name}.html"
+
     _parameter_constraints: dict = {
         "estimator": [HasMethods(["fit"])],
         "scoring": [

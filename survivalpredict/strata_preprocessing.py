@@ -56,7 +56,8 @@ def digitized_per_col(X, splits):
 
 
 class _StrataBuilderBase(TransformerMixin, BaseEstimator):
-    pass
+    _doc_link_module = "survivalpredict"
+    _doc_link_template = "https://survivalpredict.readthedocs.io/en/latest/api/generated/{estimator_module}.{estimator_name}.html"
 
 
 class StrataBuilderDiscretizer(_StrataBuilderBase, auto_wrap_output_keys=None):
@@ -185,7 +186,7 @@ class StrataBuilderDiscretizer(_StrataBuilderBase, auto_wrap_output_keys=None):
 
         check_input : bool, default True
             If True, runs checks and casting on data to ensure data is valid.
-        
+
         Returns
         -------
         object
@@ -333,6 +334,9 @@ class StrataBuilderEncoder(_StrataBuilderBase, auto_wrap_output_keys=None):
     sklearn.preprocessing.OneHotEncoder : Similar transformer.
     numpy.unique, numpy.unique_inverse
     """
+
+    _doc_link_module = "survivalpredict"
+    _doc_link_template = "https://survivalpredict.readthedocs.io/en/latest/api/generated/{estimator_module}.{estimator_name}.html"
 
     def fit(self, X, times=None, events=None, strata=None, check_input=True):
         """
@@ -553,6 +557,9 @@ class StrataColumnTransformer(
     sklearn.compose.ColumnTransformer : Scikit-learn transformer equivalent.
     """
 
+    _doc_link_module = "survivalpredict"
+    _doc_link_template = "https://survivalpredict.readthedocs.io/en/latest/api/generated/{estimator_module}.{estimator_name}.html"
+
     _parameter_constraints: dict = {"strata_transformers": [list]}
 
     def __init__(
@@ -706,7 +713,6 @@ class StrataColumnTransformer(
         strata : ndarray of shape (n_samples) , dtype=np.int64
             The strata build from the original feature set.
         """
-
 
         self._validate_strata_transformers()
 
