@@ -829,7 +829,7 @@ def get_index_with_highest_score(to_build_stack):
             nb.int64,
         )
     )(
-        nb.types.Array(nb.float64, 2, "C", False, aligned=True),
+        nb.types.Array(nb.float64, 2, "C", readonly=True, aligned=True),
         nb.types.Array(nb.int64, 1, "C", False, aligned=True),
         nb.types.Array(nb.int64, 1, "C", False, aligned=True),
         nb.types.Array(nb.bool_, 1, "C", False, aligned=True),
@@ -898,7 +898,7 @@ def build_tree(
         (
             -1,
             True,
-            X,
+            X.copy(),
             times,
             times_start,
             events,

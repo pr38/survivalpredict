@@ -94,7 +94,7 @@ def build_tree(
             times_start=times_start,
         )
     else:
-        tree._fit(
+        tree.fit(
             X,
             times,
             events,
