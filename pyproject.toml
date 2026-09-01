@@ -1,6 +1,6 @@
 [project]
 name = "survivalpredict"
-version = "0.0.3"
+version = "0.0.4"
 description = "python survival analysis/survival curves, with a scikit-learn-like api."
 readme = "README.md"
 requires-python = ">=3.11"
@@ -61,6 +61,7 @@ docs = [
     "sphinx-design>=0.7.0",
     "sphinxcontrib-napoleon>=0.7",
     "furo>=2025.12.19",
+    "intersphinx-registry>=0.2608.26"
 ]
 
 [build-system]

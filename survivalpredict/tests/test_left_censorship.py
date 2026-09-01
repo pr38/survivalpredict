@@ -9,6 +9,8 @@ from ..estimators import (
     CoxNeuralNetPH,
     KaplanMeierSurvivalEstimator,
     MultiTaskLogisticRegression,
+    DecisionTreeSurvival,
+    RandomForestSurvival,
 )
 from ..metrics import brier_scores_administrative, integrated_brier_score_administrative
 from ..validation import sur_cross_val_score
@@ -41,6 +43,8 @@ X = np.concatenate([X] * 3)
         CoxNeuralNetPH,
         KaplanMeierSurvivalEstimator,
         MultiTaskLogisticRegression,
+        DecisionTreeSurvival,
+        RandomForestSurvival,
     ],
 )
 def test_left_censorship(estimator_class):

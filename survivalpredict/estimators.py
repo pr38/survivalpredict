@@ -1,13 +1,18 @@
 import itertools
+import threading
 import warnings
+from inspect import signature
+from math import ceil
 from numbers import Integral, Real
-from typing import Any, Callable, Literal, Optional
+from typing import Any, Callable, Literal, Optional, Union
 
 import numpy as np
-from sklearn.base import BaseEstimator, _fit_context
+from joblib.parallel import Parallel, delayed
+from sklearn.base import BaseEstimator, _fit_context, clone
 from sklearn.neighbors import NearestNeighbors
 from sklearn.neighbors._base import VALID_METRICS as VALID_METRICS_KNN
-from sklearn.utils._param_validation import Interval, StrOptions
+from sklearn.utils import check_random_state
+from sklearn.utils._param_validation import HasMethods, Interval, RealNotInt, StrOptions
 from sklearn.utils.validation import check_is_fitted
 
 from ._allen_additive import (
@@ -46,19 +51,23 @@ from ._discrete_time_ph_estimation import (
     predict_parametric_discrete_time_ph_model,
     train_parametric_discrete_time_ph_model,
 )
+from ._forest import _accumulate_prediction, build_tree, get_n_samples_bootstrap
 from ._mtlr import (
-    train_mtlr,
-    predict_mtlr,
-    predict_hazard_mtlr,
     convert_hazard_to_survival_mtlr,
+    predict_hazard_mtlr,
+    predict_mtlr,
+    train_mtlr,
 )
 from ._neighbors import (
     build_kaplan_meier_survival_curve_from_neighbors_indexes,
     build_kaplan_meier_survival_curve_from_neighbors_indexes_with_left_censoring,
 )
 from ._nonparametric import (
+    convert_kaplan_meier_survival_curve_to_hazards,
     get_kaplan_meier_survival_curve,
     get_kaplan_meier_survival_curve_with_left_censorship,
+    get_kaplan_meier_survival_curve_with_weights,
+    get_kaplan_meier_survival_curve_with_weights_and_left_censorship,
 )
 from ._stratification import (
     get_l_div_m_stata_per_strata,
@@ -66,6 +75,8 @@ from ._stratification import (
     preprocess_data_for_cox_ph,
     split_and_preprocess_data_by_strata,
 )
+from ._tree import get_survival_tree
+from ._tree_left_censorship import get_survival_tree_left_censorship
 
 __all__ = [
     "CoxProportionalHazard",
@@ -76,10 +87,15 @@ __all__ = [
     "AalenAdditiveHazard",
     "CoxPHElasticNet",
     "MultiTaskLogisticRegression",
+    "DecisionTreeSurvival",
+    "RandomForestSurvival",
 ]
 
 
 class _SurvivalPredictBase(BaseEstimator):
+
+    _doc_link_module = "survivalpredict"
+    _doc_link_template = "https://survivalpredict.readthedocs.io/en/latest/api/generated/{estimator_module}.{estimator_name}.html"
 
     def _validate_for_fit(self, X, times, events, strata=None, times_start=None):
 
@@ -247,6 +263,12 @@ class CoxProportionalHazard(_SurvivalPredictBase, _ProportionalHazardBase):
         to ``tol``, the optimization code checks the dual gap for optimality
         and continues until it is smaller or equal to ``tol``.
 
+    See Also
+    --------
+    survivalpredict.estimators.ParametricDiscreteTimePH : Fully parametric equivalent.
+    survivalpredict.estimators.CoxNeuralNetPH : Deep Cox model.
+    survivalpredict.estimators.CoxPHElasticNet : Cox with ElasticNet/Lasso shrinkage.
+
     Attributes
     ----------
     coef_ : ndarray of ndarray of shape (n_features,)
@@ -360,7 +382,7 @@ class CoxProportionalHazard(_SurvivalPredictBase, _ProportionalHazardBase):
                 time_return_inverse_strata,
                 n_unique_times_strata,
                 event_counts_at_times_strata,
-                _,
+                times_start_strata,
                 time_start_return_inverse_strata,
             ) = preprocess_data_for_cox_ph(X, times, events, strata, times_start)
 
@@ -418,8 +440,8 @@ class CoxProportionalHazard(_SurvivalPredictBase, _ProportionalHazardBase):
                 time_return_inverse_strata,
                 n_unique_times_strata,
                 event_counts_at_times_strata,
-                _,
-                _,
+                times_start_strata,
+                time_start_return_inverse_strata,
             ) = preprocess_data_for_cox_ph(X, times, events, strata)
 
             if self.ties == "breslow":
@@ -467,6 +489,10 @@ class CoxProportionalHazard(_SurvivalPredictBase, _ProportionalHazardBase):
         self.coef_ = coefs
         self.n_log_likelihood = loss
 
+        if times_start is None:
+            # to avoid unnecessary compute on _get_breslow_base_hazard
+            times_start_strata = [None for i in range(n_strata)]
+
         if strata is not None:
             self._uses_strata = True
             self.seen_strata = seen_strata
@@ -480,6 +506,7 @@ class CoxProportionalHazard(_SurvivalPredictBase, _ProportionalHazardBase):
                     times_strata[s_i],
                     events_strata[s_i],
                     self._max_time_observed,
+                    times_start_strata[s_i],
                 )
 
             self._breslow_base_survival = np.exp(
@@ -490,7 +517,7 @@ class CoxProportionalHazard(_SurvivalPredictBase, _ProportionalHazardBase):
 
             risk = np.exp(np.dot(X_strata[0], self.coef_))
             self._breslow_base_hazard = _get_breslow_base_hazard(
-                risk, times, events, self._max_time_observed
+                risk, times, events, self._max_time_observed, times_start
             )
             self._breslow_base_survival = np.exp(-self._breslow_base_hazard.cumsum())
 
@@ -586,7 +613,7 @@ class CoxProportionalHazard(_SurvivalPredictBase, _ProportionalHazardBase):
         empirical_bayes: bool = True,
     ) -> "pymc.Model":
         """
-        Returns a pymc model that is equivalent to the initialized Cox Proportional Hazards.
+        Return a pymc model that is equivalent to the initialized Cox Proportional Hazards.
         Allows for generating 'Markov chain Monte Carlo' traces for inference.
 
         Parameters
@@ -610,10 +637,10 @@ class CoxProportionalHazard(_SurvivalPredictBase, _ProportionalHazardBase):
         times_start : array-like of shape (n_samples, dtype=np.int64), default=None
             Starting point for observation. If not passed in, all times_start times are assumed to be 0.
 
-        coefs_sigma: float, default=10.0
+        coefs_sigma : float, default=10.0
             Sigma of the normal distribution used for the coefficients.
 
-        empirical_bayes: bool, default=True.
+        empirical_bayes : bool, default=True
             If True and the class has been fit/trained, the initial coefficient values will be the trained coefficients.
 
         Returns
@@ -652,7 +679,7 @@ class CoxProportionalHazard(_SurvivalPredictBase, _ProportionalHazardBase):
             time_return_inverse_strata,
             n_unique_times_strata,
             _,
-            _,
+            times_start_strata,
             time_start_return_inverse_strata,
         ) = preprocess_data_for_cox_ph(
             X, times, events, strata=strata, times_start=times_start
@@ -824,6 +851,10 @@ class ParametricDiscreteTimePH(_SurvivalPredictBase, _ProportionalHazardBase):
     scipy_minimize_method : {"nelder-mead","powell","CG","BFGS","Newton-CG","L-BFGS-B","TNC","COBYLA","SLSQP","trust-constr","dogleg","trust-ncg","trust-exact","trust-krylov","basinhopping",}, default='L-BFGS-B'
         This class runs a Pymc model under the hood. Durring training we simply find the 'Maximum likelihood estimation'(MLE)/
         'Maximum a posteriori estimation'(MAP). This is the exposed method that PYMC find the MLE/MAP.
+
+    See Also
+    --------
+    survivalpredict.estimators.CoxProportionalHazard : Semi-parametric equivalent.
 
     References
     ----------
@@ -1205,7 +1236,7 @@ class ParametricDiscreteTimePH(_SurvivalPredictBase, _ProportionalHazardBase):
         times_start : array-like of shape (n_samples, dtype=np.int64), default=None
             Starting point for observation. If not passed in, all times_start times are assumed to be 0.
 
-        empirical_bayes: bool, default=True.
+        empirical_bayes : bool, default=True
             If True and the class has been fit/trained, the initial coefficient values will be the trained coefficients.
 
         Returns
@@ -1312,6 +1343,10 @@ class KaplanMeierSurvivalEstimator(_SurvivalPredictBase, _KaplanMeierBase):
 
     Kaplan-Meier is a univariate non-parametric survival curve estimation. It
     can be useful as a baseline/dummy estimator.
+
+    See Also
+    --------
+    sklearn.dummy.DummyClassifier
     """
 
     def fit(
@@ -1660,6 +1695,11 @@ class KNeighborsSurvival(_SurvivalPredictBase, _KaplanMeierBase):
         ``None`` means 1 unless in a `joblib.parallel_backend` context.
         ``-1`` means using all processors.
         Doesn't affect `fit` method.
+
+    See Also
+    --------
+    sklearn.neighbors.NearestNeighbors : Neighbor finder used.
+    survivalpredict.estimators.CoxProportionalHazard
     """
 
     _parameter_constraints: dict = {
@@ -1733,9 +1773,10 @@ class KNeighborsSurvival(_SurvivalPredictBase, _KaplanMeierBase):
         else:
             self._uses_times_start = False
 
-        X, times, events, _, times_start = self._validate_for_fit(
-            X, times, events, None, times_start
-        )
+        if check_input:
+            X, times, events, _, times_start = self._validate_for_fit(
+                X, times, events, None, times_start
+            )
 
         self._max_time_observed = int(np.max(times))
 
@@ -1935,6 +1976,11 @@ class CoxNeuralNetPH(_SurvivalPredictBase, _ProportionalHazardBase):
 
     losses_per_steps : list of float
         If track_loss is set to True, loss at each itteration while training.
+
+    See Also
+    --------
+    sklearn.neural_network.MLPClassifier
+    survivalpredict.estimators.CoxProportionalHazard
     """
 
     _parameter_constraints: dict = {
@@ -2053,9 +2099,13 @@ class CoxNeuralNetPH(_SurvivalPredictBase, _ProportionalHazardBase):
             time_return_inverse_strata,
             n_unique_times_strata,
             _,
-            _,
+            times_start_strata,
             time_start_return_inverse_strata,
         ) = preprocess_data_for_cox_ph(X, times, events, strata, times_start)
+
+        if times_start is None:
+            # to avoid unnecessary compute on _get_breslow_base_hazard
+            times_start_strata = [None for i in range(n_strata)]
 
         if uses_left_censorship is False:
             time_start_return_inverse_strata = None
@@ -2106,6 +2156,7 @@ class CoxNeuralNetPH(_SurvivalPredictBase, _ProportionalHazardBase):
                     times_strata[s_i],
                     events_strata[s_i],
                     self._max_time_observed,
+                    times_start_strata[s_i],
                 )
 
             self._breslow_base_survival = np.exp(
@@ -2115,7 +2166,7 @@ class CoxNeuralNetPH(_SurvivalPredictBase, _ProportionalHazardBase):
         else:
             risk = get_relative_risk_from_cox_net_ph_weights(X, self.coef_)
             self._breslow_base_hazard = _get_breslow_base_hazard(
-                risk, times, events, self._max_time_observed
+                risk, times, events, self._max_time_observed, times_start
             )
             self._breslow_base_survival = np.exp(-self._breslow_base_hazard.cumsum())
 
@@ -2308,6 +2359,12 @@ class AalenAdditiveHazard(_SurvivalPredictBase, _KaplanMeierBase):
     _hazard_weights_times : ndarray of ndarray of shape (n)
         Times associated for each interval of time in the  _hazard_weights
         array.
+
+    See Also
+    --------
+    survivalpredict.estimators.MultiTaskLogisticRegression :  A similar estimator that trains on a more rigorous loss/likelihood function.
+    survivalpredict.estimators.KaplanMeierSurvivalEstimator
+    survivalpredict.estimators.CoxProportionalHazard
     """
 
     _parameter_constraints: dict = {
@@ -2480,6 +2537,11 @@ class CoxPHElasticNet(_SurvivalPredictBase, _ProportionalHazardBase):
         The tolerance for the optimization: if the updates are smaller or equal
         to ``tol``, the optimization code checks the dual gap for optimality
         and continues until it is smaller or equal to ``tol``.
+
+    See Also
+    --------
+    survivalpredict.estimators.CoxProportionalHazard
+    sklearn.linear_model.ElasticNet
 
     References
     ----------
@@ -2734,6 +2796,11 @@ class MultiTaskLogisticRegression(_SurvivalPredictBase):
     max_iter_seen_ : int
         Number of training iterations point of convergence.
 
+    See Also
+    --------
+    survivalpredict.estimators.AalenAdditiveHazard : Similar estimator that trains on a heuristic.
+    survivalpredict.estimators.CoxProportionalHazard
+
     References
     ----------
 
@@ -2943,3 +3010,779 @@ class MultiTaskLogisticRegression(_SurvivalPredictBase):
         hazards = _as_numeric_np_array(hazards)
 
         return convert_hazard_to_survival_mtlr(hazards)
+
+
+class DecisionTreeSurvival(_SurvivalPredictBase, _KaplanMeierBase):
+    """
+    Decision Tree for survival curves.
+
+    Non-parametric recursive partitioning builder for survival curves.
+    Various splitting criteria for partitioning evaluation are available [1].
+    There is no support for missing data. Both left and right censorship are supported.
+    On estimation, the associated Kaplan–Meier curve for the assigned
+    partition/leaf is returned.
+
+    Parameters
+    ----------
+    criterion : {"wasserstein_distance","log_rank"}, default='log_rank'
+        The function to measure the quality of a split. The “log_rank”
+        criterion tries to maximise the chi-squared metric of an approximation
+        for the ‘two-sample log-rank test’, for the difference in survival between
+        populations.The “wasserstein_distance” measures the distance between the
+        Kaplan-Meier curves of possible splits.
+
+    splitter : {"best"}, default="best"
+        The strategy used to choose the split at each node. Currently ony
+        the "best" strategy is available.
+
+    max_depth : int, default=None
+        The maximum depth of the tree. If None, then nodes are expanded
+        until all leaves are pure or until all leaves contain less than
+        min_samples_split samples.
+
+    min_samples_split : int, default=2
+        The minimum number of samples required to split an internal node.
+
+    min_samples_leaf : int, default=1
+        The minimum number of samples required to be at a leaf node.
+        A split point at any depth will only be considered if it leaves at
+        least ``min_samples_leaf`` training samples in each of the left and
+        right branches.
+
+    min_weight_fraction_leaf : float, default=0.0
+        The minimum weighted fraction of the sum total of weights (of all
+        the input samples) required to be at a leaf node. Samples have
+        equal weight when sample_weight is not provided.
+
+    max_features : int, float or {"sqrt", "log2"}, default=None
+        The number of features to consider when looking for the best split:
+
+        - If int, then consider `max_features` features at each split.
+        - If float, then `max_features` is a fraction and
+          `max(1, int(max_features * n_features_in_))` features are considered at each
+          split.
+        - If "sqrt", then `max_features=sqrt(n_features)`.
+        - If "log2", then `max_features=log2(n_features)`.
+        - If None, then `max_features=n_features`.
+
+    random_state : int or None, default=None
+        Controls the randomness of the estimator. The features are always
+        randomly permuted at each split, even if ``splitter`` is set to
+        ``"best"``. When ``max_features < n_features``, the algorithm will
+        select ``max_features`` at random at each split before finding the best
+        split among them. But the best found split may vary across different
+        runs, even if ``max_features=n_features``.
+
+    max_leaf_nodes : int, default=None
+        Grow a tree with ``max_leaf_nodes`` in best-first fashion.
+        Best nodes are defined as relative reduction in impurity.
+        If None then unlimited number of leaf nodes.
+
+    min_impurity_decrease : float, default=0.0
+        A node will be split if this split induces a decrease of the impurity
+        greater than or equal to this value.
+        Uses "integrated_brier_score_administrative" for each node.
+
+    ccp_alpha : non-negative float, default=0.0
+        Complexity parameter used for Minimal Cost-Complexity Pruning. The
+        subtree with the largest cost complexity that is smaller than
+        ``ccp_alpha`` will be chosen. By default, no pruning is performed.
+
+    parallel_split_finding : bool, default=False
+        If set to ‘True ’, parallelizes the “best” partition
+        search across features. There is an overhead to parallelization,
+        and it is advised to parallelize partition search when data is
+        not small and only a single tree is being built at a time.
+
+    Attributes
+    ----------
+    tree_ : sklearn.tree._tree.Tree
+        The underlying Tree object.
+
+    See Also
+    --------
+    sklearn.tree.DecisionTreeClassifier : Scikit-learn equivalent for classification.
+    survivalpredict.estimators.KaplanMeierSurvivalEstimator : Underlying averaging strategy for nodes/parititons.
+    survivalpredict.estimators.RandomForestSurvival : Meta-estimator using trees.
+    survivalpredict.estimators.KNeighborsSurvival : Similar nonparametric estimator.
+
+    References
+    ----------
+
+    [1] Shimokawa A, Kawasaki Y, Miyaoka E. Comparison of splitting methods on
+    survival tree. Int J Biostat. 2015 May;11(1):175-88.
+    doi: 10.1515/ijb-2014-0029. PMID: 25849798.
+    """
+
+    _parameter_constraints: dict = {
+        "criterion": [
+            StrOptions(
+                {
+                    "wasserstein_distance",
+                    "log_rank",
+                }
+            )
+        ],
+        "splitter": [StrOptions({"best"})],  # 'random' to-do
+        "max_depth": [Interval(Integral, 1, None, closed="left"), None],
+        "min_samples_split": [
+            Interval(Integral, 2, None, closed="left"),
+        ],
+        "min_samples_leaf": [
+            Interval(Integral, 1, None, closed="left"),
+        ],
+        "min_weight_fraction_leaf": [Interval(Real, 0.0, 0.5, closed="both")],
+        "max_features": [
+            Interval(Integral, 1, None, closed="left"),
+            Interval(RealNotInt, 0.0, 1.0, closed="right"),
+            StrOptions({"sqrt", "log2"}),
+            None,
+        ],
+        "random_state": [Integral, None],
+        "max_leaf_nodes": [Interval(Integral, 2, None, closed="left"), None],
+        "min_impurity_decrease": [Interval(Real, 0.0, None, closed="left")],
+        "ccp_alpha": [Interval(Real, 0.0, None, closed="left")],
+        "parallel_split_finding": ["boolean"],
+    }
+
+    def __init__(
+        self,
+        *,
+        criterion: Literal["wasserstein_distance", "log_rank"] = "log_rank",
+        splitter: Literal["best"] = "best",
+        max_depth: Optional[int] = None,
+        min_samples_split: int = 2,
+        min_samples_leaf: int = 1,
+        min_weight_fraction_leaf: float = 0.0,
+        max_features: Union[
+            None, int, float, Literal["sqrt"], Literal["log2"]
+        ] = None,
+        random_state: Optional[int] = None,
+        max_leaf_nodes: Optional[int] = None,
+        min_impurity_decrease: float = 0.0,
+        ccp_alpha: float = 0.0,
+        parallel_split_finding: bool = False,
+    ):
+
+        self.criterion = criterion
+        self.splitter = splitter
+        self.max_depth = max_depth
+        self.min_samples_split = min_samples_split
+        self.min_samples_leaf = min_samples_leaf
+        self.min_weight_fraction_leaf = min_weight_fraction_leaf
+        self.max_features = max_features
+        self.max_leaf_nodes = max_leaf_nodes
+        self.random_state = random_state
+        self.min_impurity_decrease = min_impurity_decrease
+        self.ccp_alpha = ccp_alpha
+        self.parallel_split_finding = parallel_split_finding
+
+    @_fit_context(prefer_skip_nested_validation=True)
+    def fit(
+        self,
+        X: np.ndarray[tuple[int, int], np.dtype[np.float64]],
+        times: np.ndarray[tuple[int], np.dtype[np.int64]],
+        events: np.ndarray[tuple[int], np.dtype[np.bool_]],
+        check_input: bool = True,
+        times_start: Optional[np.ndarray[tuple[int], np.dtype[np.int64]]] = None,
+        sample_weight: np.ndarray[tuple[int], np.dtype[np.float64]] = None,
+    ):
+        """
+        Fit model.
+
+        Parameters
+        ----------
+        X : array-like of shape (n_samples, n_features)
+            Training data.
+
+        times : array-like of shape (n_samples), dtype=np.int64
+            Point in time last observed.
+
+        events : array-like of shape (n_samples), dtype=np.bool_
+            Experianed event.
+
+        check_input : bool, default=True
+            If True, validates and casts inputs.
+
+        times_start : array-like of shape (n_samples, dtype=np.int64), default=None
+            Starting point for observation. If not passed in, all times_start times are assumed to be 0.
+
+        sample_weight : array-like of shape (n_samples), default=None
+            Sample weights.
+
+        Returns
+        -------
+        object
+            Fitted Estimator.
+        """
+
+        if check_input:
+            X, times, events, _, times_start = self._validate_for_fit(
+                X, times, events, None, times_start
+            )
+
+        check_random_state(self.random_state)
+        if self.random_state == None:
+            random_state = -1
+        else:
+            random_state = self.random_state
+
+        if self.criterion == "wasserstein_distance":
+            crit_code = 0
+        elif self.criterion == "brier_scores":
+            crit_code = 1
+        else:
+            crit_code = 2
+
+        n_samples, n_features = X.shape
+
+        self.n_features_seen_ = n_features
+
+        # deducting parameters
+        # primary taken from sklearn's BaseDecisionTree
+        max_depth = -1 if self.max_depth is None else self.max_depth
+
+        if isinstance(self.min_samples_leaf, Integral):
+            min_samples_leaf = self.min_samples_leaf
+        else:  # float
+            min_samples_leaf = int(ceil(self.min_samples_leaf * n_samples))
+
+        if isinstance(self.min_samples_split, Integral):
+            min_samples_split = self.min_samples_split
+        else:  # float
+            min_samples_split = int(ceil(self.min_samples_split * n_samples))
+            min_samples_split = max(2, min_samples_split)
+
+        min_samples_split = max(min_samples_split, 2 * min_samples_leaf)
+
+        if self.max_features is None:
+            max_features = -1
+        elif self.max_features == "sqrt":
+            max_features = max(1, int(np.sqrt(n_features)))
+        elif self.max_features == "log2":
+            max_features = max(1, int(np.log2(n_features)))
+        elif isinstance(self.max_features, Integral):
+            max_features = self.max_features
+        else:  # float
+            max_features = max(1, int(self.max_features * n_features))
+
+        max_leaf_nodes = -1 if self.max_leaf_nodes is None else self.max_leaf_nodes
+
+        min_weight_leaf = (
+            0.0
+            if self.min_weight_fraction_leaf is None
+            else float(self.min_weight_fraction_leaf * n_samples)
+        )
+
+        min_impurity_decrease = (
+            0.0
+            if self.min_impurity_decrease is None
+            else float(self.min_impurity_decrease)
+        )
+
+        ccp_alpha = 0.0 if self.ccp_alpha is None else float(self.ccp_alpha)
+
+        if sample_weight is None:
+            weights = np.ones(n_samples)
+            self._max_time_observed = np.max(times)
+
+        else:
+            weights = sample_weight
+            self._max_time_observed = np.max(times[sample_weight != 0.0])
+
+        if times_start is None:
+            self.tree_ = get_survival_tree(
+                X,
+                times,
+                events,
+                weights,
+                min_samples_leaf,
+                max_depth,
+                min_samples_split,
+                crit_code,
+                min_impurity_decrease,
+                min_weight_leaf,
+                max_features,
+                max_leaf_nodes,
+                random_state,
+                self._max_time_observed,
+                ccp_alpha,
+                self.parallel_split_finding,
+            )
+        else:
+            self.tree_ = get_survival_tree_left_censorship(
+                X,
+                times,
+                times_start,
+                events,
+                weights,
+                min_samples_leaf,
+                max_depth,
+                min_samples_split,
+                crit_code,
+                min_impurity_decrease,
+                min_weight_leaf,
+                max_features,
+                max_leaf_nodes,
+                random_state,
+                self._max_time_observed,
+                ccp_alpha,
+                self.parallel_split_finding,
+            )
+
+        self.is_fitted_ = True
+        return self
+
+    def predict(
+        self,
+        X: np.ndarray[tuple[int, int], np.dtype[np.float64]],
+        max_time: Optional[int] = None,
+    ) -> np.ndarray[tuple[int, int], np.dtype[np.float64]]:
+        """
+        Build survival curves on an array of vectors X.
+
+        Parameters
+        ----------
+        X : array-like of shape (n_samples, n_features)
+            Predicting data.
+
+        max_time : int, default=None
+            Maximum time of built survival curves. If none, maximum time is max
+            time seen on training data.
+
+        Returns
+        -------
+        ndarray of shape (n_samples, max_time), dtype=np.float64
+            The estimated survival curves, the left-most column is the probability of survival at time 1,
+            and the right-most column ends at max_time.
+        """
+
+        check_is_fitted(self)
+
+        X, _, max_time = self._validate_for_predict(X, None, max_time)
+
+        X = X.astype(np.float32)
+
+        survival = self.tree_.predict(X)
+
+        # exclude time 0, to be consistent with rest of the estimators
+        survival = survival[:, 1:]
+
+        if max_time == self._max_time_observed:
+            return survival
+        elif max_time < self._max_time_observed:
+            return survival[:, :max_time]
+        else:  # max_time > self._max_time_observed
+            missing_dims = max_time - self._max_time_observed
+
+            impulted_values = np.repeat(
+                survival[:, -1][np.newaxis], missing_dims, axis=0
+            ).T
+
+            return np.hstack([survival, impulted_values])
+
+    def predict_hazard(
+        self,
+        X: np.ndarray[tuple[int, int], np.dtype[np.float64]],
+        max_time: Optional[int] = None,
+    ) -> np.ndarray[tuple[int, int], np.dtype[np.float64]]:
+        """
+        Build hazards on an array of vectors X.
+
+        Parameters
+        ----------
+        X : array-like of shape (n_samples, n_features)
+            Predicting data.
+
+        max_time : int, default=None
+            Maximum time of built hazards. If none, maximum time is max
+            time seen on training data.
+
+        Returns
+        -------
+        ndarray of shape (n_samples, max_time), dtype=np.float64
+            The estimated hazards, the left-most column is the hazards at time 1,
+            and the right-most column ends at max_time.
+        """
+        check_is_fitted(self)
+
+        X, _, max_time = self._validate_for_predict(X, None, max_time)
+
+        survival = self.predict(X, max_time)
+
+        return convert_kaplan_meier_survival_curve_to_hazards(survival)
+
+
+class RandomForestSurvival(_SurvivalPredictBase, _KaplanMeierBase):
+    """
+    Random Forest for survival curves.
+
+    Meta estimator that fits a number of survival decision trees on various
+    sub-samples of the dataset and uses averaging to improve the predictive
+    accuracy and control over-fitting. Trees in the forest use the best split
+    strategy. The sub-sample size is controlled with the `max_samples` parameter
+    if `bootstrap=True` (default), otherwise the whole dataset is used to build
+    each tree. By default, the algorithm examines only a random subset of
+    features to find the split; the `max_features` parameter can change this
+    behaviour.
+
+    Parameters
+    ----------
+    n_estimators : int, default=50
+        The number of trees in the forest.
+
+    bootstrap : bool, default=True
+        Whether bootstrap samples are used when building trees. If False, the
+        whole dataset is used to build each tree.
+
+    n_jobs : int, default=None
+        The number of jobs to run in parallel. :meth:`fit`, :meth:`predict`,
+        and :meth:`predict_hazard` are all parallelized over the trees.
+        ``None`` means 1 unless in a :obj:`joblib.parallel_backend`
+        context. ``-1`` means using all processors.
+
+    max_samples : int or float, default=None
+        If bootstrap is True, the number of samples to draw from X
+        to train each base estimator.
+
+        - If None (default), then draw `X.shape[0]` samples irrespective of
+          `sample_weight`.
+        - If int, then draw `max_samples` samples.
+        - If float, then draw `max_samples * X.shape[0]` unweighted samples
+          or `max_samples * sample_weight.sum()` weighted samples.
+
+    criterion : {"wasserstein_distance","log_rank"}, default='log_rank'
+        The function to measure the quality of a split. The “log_rank”
+        criterion tries to maximise the chi-squared metric of an approximation
+        for the ‘two-sample log-rank test’, for the difference in survival between
+        populations.The “wasserstein_distance” measures the distance between the
+        Kaplan-Meier curves of possible splits.
+
+    splitter : {"best"}, default="best"
+        The strategy used to choose the split at each node. Currently ony
+        the "best" strategy is available.
+
+    max_depth : int, default=None
+        The maximum depth of the tree. If None, then nodes are expanded
+        until all leaves are pure or until all leaves contain less than
+        min_samples_split samples.
+
+    min_samples_split : int, default=2
+        The minimum number of samples required to split an internal node.
+
+    min_samples_leaf : int, default=1
+        The minimum number of samples required to be at a leaf node.
+        A split point at any depth will only be considered if it leaves at
+        least ``min_samples_leaf`` training samples in each of the left and
+        right branches.
+
+    min_weight_fraction_leaf : float, default=0.0
+        The minimum weighted fraction of the sum total of weights (of all
+        the input samples) required to be at a leaf node. Samples have
+        equal weight when sample_weight is not provided.
+
+    max_features : int, float or {"sqrt", "log2"}, default="sqrt"
+        The number of features to consider when looking for the best split:
+
+        - If int, then consider `max_features` features at each split.
+        - If float, then `max_features` is a fraction and
+          `max(1, int(max_features * n_features_in_))` features are considered at each
+          split.
+        - If "sqrt", then `max_features=sqrt(n_features)`.
+        - If "log2", then `max_features=log2(n_features)`.
+        - If None, then `max_features=n_features`.
+
+    random_state : int or None, default=None
+        Controls the randomness of the estimator. The features are always
+        randomly permuted at each split, even if ``splitter`` is set to
+        ``"best"``. When ``max_features < n_features``, the algorithm will
+        select ``max_features`` at random at each split before finding the best
+        split among them. But the best found split may vary across different
+        runs, even if ``max_features=n_features``.
+
+    max_leaf_nodes : int, default=None
+        Grow a tree with ``max_leaf_nodes`` in best-first fashion.
+        Best nodes are defined as relative reduction in impurity.
+        If None then unlimited number of leaf nodes.
+
+    min_impurity_decrease : float, default=0.0
+        A node will be split if this split induces a decrease of the impurity
+        greater than or equal to this value.
+        Uses "integrated_brier_score_administrative" for each node.
+
+    ccp_alpha : non-negative float, default=0.0
+        Complexity parameter used for Minimal Cost-Complexity Pruning. The
+        subtree with the largest cost complexity that is smaller than
+        ``ccp_alpha`` will be chosen. By default, no pruning is performed.
+
+    Attributes
+    ----------
+    estimator_ : :class:`~survivalpredict.estimators.DecisionTreeSurvival`
+        The child estimator template used to create the collection of fitted
+        sub-estimators.
+
+    estimators_ : list of DecisionTreeSurvival
+        The collection of fitted sub-estimators.
+
+    See Also
+    --------
+    survivalpredict.estimators.DecisionTreeSurvival : Underlying estimator.
+    survivalpredict.estimators.KaplanMeierSurvivalEstimator : Underlying averaging strategy for nodes/parititons.
+    sklearn.ensemble.RandomForestClassifier : Scikit-learn equivalent for classification.
+
+    References
+    ----------
+    [1] Ishwaran, Hemant & Kogalur, Udaya & Blackstone, Eugene & Lauer, Michael.
+    (2008). Random survival forests. The Annals of Applied Statistics. 2. 10.1214/08-AOAS169.
+    """
+
+    _parameter_constraints: dict = {
+        "n_estimators": [Interval(Integral, 1, None, closed="left")],
+        "bootstrap": ["boolean"],
+        "n_jobs": [Integral, None],
+        "max_samples": [
+            None,
+            Interval(RealNotInt, 0.0, None, closed="neither"),
+            Interval(Integral, 1, None, closed="left"),
+        ],
+        "criterion": [
+            StrOptions(
+                {
+                    "wasserstein_distance",
+                    "log_rank",
+                }
+            )
+        ],
+        "splitter": [StrOptions({"best"})],  # 'random' to-do
+        "max_depth": [Interval(Integral, 1, None, closed="left"), None],
+        "min_samples_split": [
+            Interval(Integral, 2, None, closed="left"),
+        ],
+        "min_samples_leaf": [
+            Interval(Integral, 1, None, closed="left"),
+        ],
+        "min_weight_fraction_leaf": [Interval(Real, 0.0, 0.5, closed="both")],
+        "max_features": [
+            Interval(Integral, 1, None, closed="left"),
+            Interval(RealNotInt, 0.0, 1.0, closed="right"),
+            StrOptions({"sqrt", "log2"}),
+            None,
+        ],
+        "random_state": [Integral, None],
+        "max_leaf_nodes": [Interval(Integral, 2, None, closed="left"), None],
+        "min_impurity_decrease": [Interval(Real, 0.0, None, closed="left")],
+        "ccp_alpha": [Interval(Real, 0.0, None, closed="left")],
+    }
+
+    def __init__(
+        self,
+        *,
+        n_estimators: int = 50,
+        bootstrap: bool = True,
+        n_jobs: Optional[int] = None,
+        max_samples: None | int | float = None,
+        criterion: Literal["wasserstein_distance", "log_rank"] = "log_rank",
+        splitter: Literal["best"] = "best",
+        max_depth: Optional[int] = None,
+        min_samples_split: int = 2,
+        min_samples_leaf: int = 1,
+        min_weight_fraction_leaf: float = 0.0,
+        max_features: Union[
+            None, int, float, Literal["sqrt"], Literal["log2"]
+        ] = "sqrt",
+        random_state: Optional[int] = None,
+        max_leaf_nodes: Optional[int] = None,
+        min_impurity_decrease: float = 0.0,
+        ccp_alpha: float = 0.0,
+    ):
+        self.n_estimators = n_estimators
+        self.bootstrap = bootstrap
+        self.n_jobs = n_jobs
+        self.max_samples = max_samples
+        self.criterion = criterion
+        self.splitter = splitter
+        self.max_depth = max_depth
+        self.min_samples_split = min_samples_split
+        self.min_samples_leaf = min_samples_leaf
+        self.min_weight_fraction_leaf = min_weight_fraction_leaf
+        self.max_features = max_features
+        self.max_leaf_nodes = max_leaf_nodes
+        self.random_state = random_state
+        self.min_impurity_decrease = min_impurity_decrease
+        self.ccp_alpha = ccp_alpha
+
+    @_fit_context(prefer_skip_nested_validation=True)
+    def fit(
+        self,
+        X: np.ndarray[tuple[int, int], np.dtype[np.float64]],
+        times: np.ndarray[tuple[int], np.dtype[np.int64]],
+        events: np.ndarray[tuple[int], np.dtype[np.bool_]],
+        check_input: bool = True,
+        times_start: Optional[np.ndarray[tuple[int], np.dtype[np.bool_]]] = None,
+        sample_weight: np.ndarray[tuple[int], np.dtype[np.float64]] = None,
+    ):
+        """
+        Fit model.
+
+        Parameters
+        ----------
+        X : array-like of shape (n_samples, n_features)
+            Training data.
+
+        times : array-like of shape (n_samples), dtype=np.int64
+            Point in time last observed.
+
+        events : array-like of shape (n_samples), dtype=np.bool_
+            Experianed event.
+
+        check_input : bool, default=True
+            If True, validates and casts inputs.
+
+        times_start : array-like of shape (n_samples, dtype=np.int64), default=None
+            Starting point for observation. If not passed in, all times_start times are assumed to be 0.
+
+        sample_weight : array-like of shape (n_samples), default=None
+            Sample weights.
+
+        Returns
+        -------
+        object
+            Fitted Estimator.
+        """
+
+        if check_input:
+            X, times, events, _, __ = self._validate_for_fit(
+                X, times, events, None, None
+            )
+
+        estimator = DecisionTreeSurvival(
+            criterion=self.criterion,
+            splitter=self.splitter,
+            max_depth=self.max_depth,
+            min_samples_split=self.min_samples_split,
+            min_samples_leaf=self.min_samples_leaf,
+            min_weight_fraction_leaf=self.min_weight_fraction_leaf,
+            max_features=self.max_features,
+            max_leaf_nodes=self.max_leaf_nodes,
+            random_state=self.random_state,
+            min_impurity_decrease=self.min_impurity_decrease,
+            ccp_alpha=self.ccp_alpha,
+            parallel_split_finding=False,
+        )
+
+        if not self.bootstrap and self.max_samples is not None:
+            raise ValueError(
+                "`max_sample` cannot be set if `bootstrap=False`. "
+                "Either switch to `bootstrap=True` or set "
+                "`max_sample=None`."
+            )
+        elif self.bootstrap:
+            n_samples_bootstrap = get_n_samples_bootstrap(
+                X.shape[0], self.max_samples, sample_weight
+            )
+        else:
+            n_samples_bootstrap = None
+
+        self._n_samples_bootstrap = n_samples_bootstrap
+
+        trees = [clone(estimator) for _ in range(self.n_estimators)]
+
+        self.estimators_ = Parallel(n_jobs=self.n_jobs)(  # ,prefer="threads"
+            delayed(build_tree)(
+                t,
+                self.bootstrap,
+                X,
+                times,
+                events,
+                sample_weight,
+                n_samples_bootstrap,
+                times_start,
+            )
+            for t in trees
+        )
+
+        self._max_time_observed = times.max()
+
+        self.is_fitted_ = True
+        return self
+
+    def predict(
+        self,
+        X: np.ndarray[tuple[int, int], np.dtype[np.float64]],
+        max_time: Optional[int] = None,
+    ) -> np.ndarray[tuple[int, int], np.dtype[np.float64]]:
+        """
+        Build survival curves on an array of vectors X.
+
+        Parameters
+        ----------
+        X : array-like of shape (n_samples, n_features)
+            Predicting data.
+
+        max_time : int, default=None
+            Maximum time of built survival curves. If none, maximum time is max
+            time seen on training data.
+
+        Returns
+        -------
+        ndarray of shape (n_samples, max_time), dtype=np.float64
+            The estimated survival curves, the left-most column is the
+            probability of survival at time 1, and the right-most column
+            ends at max_time.
+        """
+
+        check_is_fitted(self)
+
+        X, _, max_time = self._validate_for_predict(X, None, max_time)
+
+        y_hat = np.zeros((X.shape[0], max_time))
+
+        lock = threading.Lock()
+        Parallel(n_jobs=self.n_jobs, require="sharedmem")(
+            delayed(_accumulate_prediction)(e.predict, X, y_hat, lock, max_time)
+            for e in self.estimators_
+        )
+
+        y_hat /= len(self.estimators_)
+
+        return y_hat
+
+    def predict_hazard(
+        self,
+        X: np.ndarray[tuple[int, int], np.dtype[np.float64]],
+        max_time: Optional[int] = None,
+    ) -> np.ndarray[tuple[int, int], np.dtype[np.float64]]:
+        """
+        Build hazards on an array of vectors X.
+
+        Parameters
+        ----------
+        X : array-like of shape (n_samples, n_features)
+            Predicting data.
+
+        max_time : int, default=None
+            Maximum time of built hazards. If none, maximum time is max
+            time seen on training data.
+
+        Returns
+        -------
+        ndarray of shape (n_samples, max_time), dtype=np.float64
+            The estimated hazards, the left-most column is the hazards at time 1,
+            and the right-most column ends at max_time.
+        """
+
+        check_is_fitted(self)
+
+        X, _, max_time = self._validate_for_predict(X, None, max_time)
+
+        y_hat = np.zeros((X.shape[0], max_time))
+
+        lock = threading.Lock()
+        Parallel(n_jobs=self.n_jobs, require="sharedmem")(
+            delayed(_accumulate_prediction)(e.predict, X, y_hat, lock, max_time)
+            for e in self.estimators_
+        )
+
+        y_hat /= len(self.estimators_)
+
+        return convert_kaplan_meier_survival_curve_to_hazards(y_hat)

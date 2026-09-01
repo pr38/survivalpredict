@@ -86,6 +86,18 @@ The estimators implemented in the `survivalpredict.estimators` sub-module.
         <td>No</td>
         <td>Yes</td>
     </tr>
+        </tr>
+        <td>DecisionTreeSurvival</td>
+        <td> Non-parametric recursive partitioning builder for survival curves. Builds a Kaplan–Meier curves for each partition/leaf. 'Log Rank' and 'Wasserstein Distance' based splitting criterion is available.</td>
+        <td>No</td>
+        <td>Yes</td>
+    </tr>
+        </tr>
+        <td>RandomForestSurvival</td>
+        <td> Meta estimator that fits a number of survival decision trees on various sub-samples of the dataset and uses averaging to improve the predictive accuracy and control over-fitting. </td>
+        <td>No</td>
+        <td>Yes</td>
+    </tr>
 </table>
 
 

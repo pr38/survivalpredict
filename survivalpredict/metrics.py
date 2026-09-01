@@ -53,7 +53,7 @@ def _brier_scores_ipcw(
         np.logical_not(events_for_ipcw), times_for_ipcw, max_time
     )
 
-    survived_at_times = times[:, np.newaxis] > unique_times
+    survived_at_times = times[:, np.newaxis] >= unique_times
     not_survived_at_times = ~survived_at_times
     not_survived_at_times_with_event = np.logical_and(
         not_survived_at_times, events[:, np.newaxis]
@@ -329,7 +329,7 @@ def _brier_scores_administrative(
     not_censored = np.logical_or(survived_at_times, events[:, np.newaxis])
 
     if times_start is not None:
-        not_left_censored = ~unique_times <= times_start[:, np.newaxis]
+        not_left_censored = ~(unique_times <= times_start[:, np.newaxis])
         not_censored = np.logical_and(not_censored, not_left_censored)
 
     left = (not_survived_at_times_with_event * np.square(predictions)) * not_censored

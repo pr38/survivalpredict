@@ -125,9 +125,12 @@ def split_and_preprocess_data_by_strata(
 
 
 def preprocess_data_for_cox_ph(X, times, events, strata=None, times_start=None):
-    if strata is not None:
-        has_times_start = times_start is not None
+
+    has_times_start = times_start is not None
+    if not has_times_start:
         times_start = np.zeros_like(times)
+
+    if strata is not None:
         (
             n_strata,
             seen_strata,
@@ -149,7 +152,7 @@ def preprocess_data_for_cox_ph(X, times, events, strata=None, times_start=None):
         )
 
     else:
-        if times_start is None:
+        if not has_times_start:
             unique_times, time_return_inverse = np.unique(times, return_inverse=True)
             event_counts_at_times = np.bincount(
                 time_return_inverse, weights=events.astype(np.int64)

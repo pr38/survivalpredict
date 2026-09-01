@@ -69,6 +69,10 @@ def build_sklearn_pipeline_target(
         Returns a numpy array that survivalpredict knows how to unpack, while
         allowing said numpy array to flow through the various machinery of
         scikit-learn.
+
+    See Also
+    --------
+    survivalpredict.pipeline.SklearnSurvivalPipeline
     """
     times = validate_times_array(times)
     events = _as_bool_np_array(events)
@@ -114,6 +118,10 @@ def _fit_transform_sp_strata_column_transformer(
 
 
 class SklearnSurvivalPipeline(_BaseComposition):
+
+    _doc_link_module = "survivalpredict"
+    _doc_link_template = "https://survivalpredict.readthedocs.io/en/latest/api/generated/{estimator_module}.{estimator_name}.html"
+
     """
     Scikit-learn compatible pipeline class for survivalpredict.
 
@@ -146,6 +154,13 @@ class SklearnSurvivalPipeline(_BaseComposition):
         to the pipeline cannot be inspected directly. Use the attribute
         named_steps or steps to inspect estimators within the pipeline. Caching
         the transformers is advantageous when fitting is time consuming.
+
+    See Also
+    --------
+    sklearn.pipeline.Pipeline : Scikit-learn equivalent.
+    survivalpredict.pipeline.build_sklearn_pipeline_target : Target/y.
+    survivalpredict.pipeline.make_sklearn_survival_pipeline : Utility builder for SklearnSurvivalPipeline.
+
     """
     _parameter_constraints: dict = {
         "steps": [list, Hidden(tuple)],
@@ -371,10 +386,10 @@ def make_sklearn_survival_pipeline(
 
     Parameters
     ----------
-    *steps_no_names : list of Estimator objects 
-        List of class instances that are chained together. The class instances 
-        are assumped to be scikit-learn transformers/survivalpredict 
-        StrataBuilders/StrataColumnTransformers. The final instance is assumed to be 
+    *steps_no_names : list of Estimator objects
+        List of class instances that are chained together. The class instances
+        are assumped to be scikit-learn transformers/survivalpredict
+        StrataBuilders/StrataColumnTransformers. The final instance is assumed to be
         a survivalpredict estimator predictor.
 
     max_time : int
@@ -389,6 +404,11 @@ def make_sklearn_survival_pipeline(
         inspected directly. Use the attribute named_steps or steps to inspect
         estimators within the pipeline. Caching the transformers is advantageous
         when fitting is time consuming.
+
+    See Also
+    --------
+    sklearn.pipeline.make_pipeline : Scikit-learn equivalent.
+    survivalpredict.pipeline.SklearnSurvivalPipeline
     """
     max_time = _as_int(max_time, "max_time")
 

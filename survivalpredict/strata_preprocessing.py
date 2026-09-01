@@ -56,7 +56,8 @@ def digitized_per_col(X, splits):
 
 
 class _StrataBuilderBase(TransformerMixin, BaseEstimator):
-    pass
+    _doc_link_module = "survivalpredict"
+    _doc_link_template = "https://survivalpredict.readthedocs.io/en/latest/api/generated/{estimator_module}.{estimator_name}.html"
 
 
 class StrataBuilderDiscretizer(_StrataBuilderBase, auto_wrap_output_keys=None):
@@ -97,6 +98,12 @@ class StrataBuilderDiscretizer(_StrataBuilderBase, auto_wrap_output_keys=None):
 
     _uses_strata : bool
         True if fitted on preexising strata, False otherwise.
+
+    See Also
+    --------
+    sklearn.preprocessing.KBinsDiscretizer : Similar transformer.
+    numpy.percentile, numpy.linspace, scipy.cluster.vq.kmeans
+
     """
 
     _parameter_constraints: dict = {
@@ -179,7 +186,7 @@ class StrataBuilderDiscretizer(_StrataBuilderBase, auto_wrap_output_keys=None):
 
         check_input : bool, default True
             If True, runs checks and casting on data to ensure data is valid.
-        
+
         Returns
         -------
         object
@@ -320,7 +327,16 @@ class StrataBuilderEncoder(_StrataBuilderBase, auto_wrap_output_keys=None):
     If existing strata are passed in, it adds onto existing strata.
     StrataBuilderEncoder works on categorical data encoded in numerical or string types.
     One or many columns of mixed types can be used.
+
+    See Also
+    --------
+    sklearn.preprocessing.LabelEncoder : Similar transformer.
+    sklearn.preprocessing.OneHotEncoder : Similar transformer.
+    numpy.unique, numpy.unique_inverse
     """
+
+    _doc_link_module = "survivalpredict"
+    _doc_link_template = "https://survivalpredict.readthedocs.io/en/latest/api/generated/{estimator_module}.{estimator_name}.html"
 
     def fit(self, X, times=None, events=None, strata=None, check_input=True):
         """
@@ -535,7 +551,14 @@ class StrataColumnTransformer(
     ----------
     strata_transformers : list of tuples
         List of (name, strat builder object, columns) tuples specifying the name, strat builder object and columns  used for building the strata.
+
+    See Also
+    --------
+    sklearn.compose.ColumnTransformer : Scikit-learn transformer equivalent.
     """
+
+    _doc_link_module = "survivalpredict"
+    _doc_link_template = "https://survivalpredict.readthedocs.io/en/latest/api/generated/{estimator_module}.{estimator_name}.html"
 
     _parameter_constraints: dict = {"strata_transformers": [list]}
 
@@ -690,7 +713,6 @@ class StrataColumnTransformer(
         strata : ndarray of shape (n_samples) , dtype=np.int64
             The strata build from the original feature set.
         """
-
 
         self._validate_strata_transformers()
 
@@ -898,6 +920,10 @@ def make_strata_column_transformer(
     -------
     StrataColumnTransformer
             Returns a StrataColumnTransformer object.
+
+    See Also
+    --------
+    survivalpredict.strata_preprocessing.StrataColumnTransformer
     """
     estimators, selections = zip(*strata_transformer_columns)
 

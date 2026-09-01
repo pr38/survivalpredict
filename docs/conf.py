@@ -1,6 +1,8 @@
 import os
 import sys
 
+from intersphinx_registry import get_intersphinx_mapping
+
 sys.path.insert(0, os.path.abspath(os.path.pardir))
 
 
@@ -15,7 +17,7 @@ sys.path.insert(0, os.path.abspath(os.path.pardir))
 project = 'survivalpredict'
 copyright = '2026, Pouya Rezvanipour'
 author = 'Pouya Rezvanipour'
-#release = '0.0.2'
+#release = '0.0.4'
 
 # -- General configuration ---------------------------------------------------
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#general-configuration
@@ -24,6 +26,7 @@ extensions = [
     'sphinx.ext.todo',
     'sphinx.ext.autodoc',
     'sphinx.ext.autosummary',
+    'sphinx.ext.intersphinx',
     'sphinx.ext.napoleon',
     'sphinx_design',
     'numpydoc',
@@ -70,3 +73,10 @@ autodoc_default_options = {
 }
 autosummary_generate = True
 
+intersphinx_mapping = get_intersphinx_mapping(
+    packages={
+        "numpy",
+        "sklearn",
+        "scipy",
+    }
+)

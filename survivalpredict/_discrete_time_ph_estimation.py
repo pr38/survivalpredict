@@ -311,6 +311,7 @@ def predict_parametric_discrete_time_ph_model(
         np.ndarray[tuple[int], np.dtype[np.float64]],
     ],
     strata: Optional[np.ndarray[tuple[int], np.dtype[np.int64]]] = None,
+    return_hazard: bool = False,
 ) -> np.ndarray[tuple[int, int], np.dtype[np.float64]]:
 
     times_of_intrest = np.arange(1, max_time + 1)
@@ -333,6 +334,9 @@ def predict_parametric_discrete_time_ph_model(
             times_of_intrest_norm, base_hazard_params  # type: ignore
         )
         hazard = base_hazards * relative_risk[:, None]
+
+    if return_hazard:
+        return hazard
 
     hazard_estimation_cumsum = np.cumsum(hazard, axis=1)
 

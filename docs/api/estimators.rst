@@ -16,11 +16,14 @@ estimators
     AalenAdditiveHazard
     CoxPHElasticNet
     MultiTaskLogisticRegression
+    DecisionTreeSurvival
+    RandomForestSurvival
+
 
 .. autoclass:: survivalpredict.estimators.CoxProportionalHazard
    :members:
-   .. :inherited-members:
-   .. :exclude-members: get_metadata_routing, set_fit_request, set_predict_request, set_params, set_fit_request, get_params
+   :inherited-members:
+   :exclude-members: get_metadata_routing, set_fit_request, set_predict_request, set_params, set_fit_request, get_params
 
 .. autoclass:: survivalpredict.estimators.ParametricDiscreteTimePH
    :members:
@@ -58,4 +61,13 @@ estimators
    :inherited-members:
    :exclude-members: get_metadata_routing, set_fit_request, set_predict_request, set_params, set_fit_request, get_params
 
+.. autoclass:: survivalpredict.estimators.DecisionTreeSurvival
+   :members:
+   :inherited-members:
+   :exclude-members: get_metadata_routing, set_fit_request, set_predict_request, set_params, set_fit_request, get_params
 
+.. autoclass:: survivalpredict.estimators.RandomForestSurvival
+   :members:
+   :inherited-members:
+   :exclude-members: get_metadata_routing, set_fit_request, set_predict_request, set_params, set_fit_request, get_params
+   

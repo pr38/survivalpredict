@@ -321,6 +321,10 @@ def sur_cross_validate(
     -------
     dict of float arrays of shape (n_splits,)
         Array of scores of the estimator for each run of the cross validation.
+
+    See Also
+    --------
+    sklearn.model_selection.cross_validate : Scikit-learn equivalent.
     """
     if return_train_score is None:
         return_train_score = False
@@ -494,6 +498,10 @@ def sur_cross_val_score(
     -------
     ndarray of float of shape=(len(list(cv)),)
         Array of scores of the estimator for each run of the cross validation.
+
+    See Also
+    --------
+    sklearn.model_selection.cross_val_score : Scikit-learn equivalent.
     """
 
     cv_result = sur_cross_validate(
