@@ -118,10 +118,6 @@ def _fit_transform_sp_strata_column_transformer(
 
 
 class SklearnSurvivalPipeline(_BaseComposition):
-
-    _doc_link_module = "survivalpredict"
-    _doc_link_template = "https://survivalpredict.readthedocs.io/en/latest/api/generated/{estimator_module}.{estimator_name}.html"
-
     """
     Scikit-learn compatible pipeline class for survivalpredict.
 
@@ -162,6 +158,10 @@ class SklearnSurvivalPipeline(_BaseComposition):
     survivalpredict.pipeline.make_sklearn_survival_pipeline : Utility builder for SklearnSurvivalPipeline.
 
     """
+
+    _doc_link_module = "survivalpredict"
+    _doc_link_template = "https://survivalpredict.readthedocs.io/en/latest/api/generated/{estimator_module}.{estimator_name}.html"
+
     _parameter_constraints: dict = {
         "steps": [list, Hidden(tuple)],
         "max_time": [Interval(Integral, 1, None, closed="left")],
