@@ -50,7 +50,7 @@ def _brier_scores_ipcw(
     unique_times = np.arange(1, max_time + 1)
 
     kaplan_meier_survival_curve_inverted_event = get_kaplan_meier_survival_curve(
-        np.logical_not(events_for_ipcw), times_for_ipcw, max_time
+        np.logical_not(events_for_ipcw), times_for_ipcw, max_time, False
     )
 
     survived_at_times = times[:, np.newaxis] >= unique_times
