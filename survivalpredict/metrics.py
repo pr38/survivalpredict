@@ -85,12 +85,12 @@ def _brier_scores_ipcw(
 
 def brier_scores_ipcw(
     predictions: np.ndarray[tuple[int, int], np.dtype[np.float64]],
-    times: np.ndarray,
-    events: np.ndarray,
-    events_for_ipcw: Optional[np.ndarray] = None,
-    times_for_ipcw: Optional[np.ndarray] = None,
+    times: np.ndarray[tuple[int], np.dtype[np.int64]],
+    events: np.ndarray[tuple[int], np.dtype[np.bool_]],
+    events_for_ipcw: Optional[np.ndarray[tuple[int], np.dtype[np.bool_]]] = None,
+    times_for_ipcw: Optional[np.ndarray[tuple[int], np.dtype[np.int64]]] = None,
     max_time: Optional[int] = None,
-) -> np.ndarray:
+) -> np.ndarray[tuple[int], np.dtype[np.float64]]:
     """
     Brier scores weighted with the inverse probability of censoring.
 
@@ -193,13 +193,13 @@ def _integrated_brier_score_ipcw(
 
 
 def integrated_brier_score_ipcw(
-    predictions: np.ndarray,
-    times: np.ndarray,
-    events: np.ndarray,
-    events_for_ipcw: Optional[np.ndarray] = None,
-    times_for_ipcw: Optional[np.ndarray] = None,
+    predictions: np.ndarray[tuple[int, int], np.dtype[np.float64]],
+    times: np.ndarray[tuple[int], np.dtype[np.int64]],
+    events: np.ndarray[tuple[int], np.dtype[np.bool_]],
+    events_for_ipcw: Optional[np.ndarray[tuple[int], np.dtype[np.bool_]]] = None,
+    times_for_ipcw: Optional[np.ndarray[tuple[int], np.dtype[np.int64]]] = None,
     max_time: Optional[int] = None,
-) -> np.ndarray:
+) -> float:
     """
     Integrated Brier score weighted with the inverse probability of censoring.
 
@@ -278,8 +278,8 @@ def integrated_brier_score_ipcw(
 
 
 def integrated_brier_score_ipcw_sklearn_metric(
-    y_true: np.ndarray, y_pred: np.ndarray[tuple[int, int], np.dtype[np.floating]]
-):
+    y_true: np.ndarray, y_pred: np.ndarray[tuple[int, int], np.dtype[np.float64]]
+) -> float:
     """
     Scikit-learn metric wrapper for integrated Brier scores weighted with the
     inverse probability of censoring.
@@ -350,12 +350,12 @@ def _brier_scores_administrative(
 
 
 def brier_scores_administrative(
-    predictions: np.ndarray,
-    times: np.ndarray,
-    events: np.ndarray,
+    predictions: np.ndarray[tuple[int, int], np.dtype[np.float64]],
+    times: np.ndarray[tuple[int], np.dtype[np.int64]],
+    events: np.ndarray[tuple[int], np.dtype[np.bool_]],
     max_time: Optional[int] = None,
-    times_start: Optional[np.ndarray] = None,
-):
+    times_start: Optional[np.ndarray[tuple[int], np.dtype[np.int64]]] = None,
+) -> np.ndarray[tuple[int], np.dtype[np.float64]]:
     """
     Brier scores for administrative censorship.
 
@@ -437,12 +437,12 @@ def _integrated_brier_score_administrative(
 
 
 def integrated_brier_score_administrative(
-    predictions: np.ndarray,
-    times: np.ndarray,
-    events: np.ndarray,
+    predictions: np.ndarray[tuple[int, int], np.dtype[np.float64]],
+    times: np.ndarray[tuple[int], np.dtype[np.int64]],
+    events: np.ndarray[tuple[int], np.dtype[np.bool_]],
     max_time: Optional[int] = None,
-    times_start: Optional[np.ndarray] = None,
-):
+    times_start: Optional[np.ndarray[tuple[int], np.dtype[np.int64]]] = None,
+) -> float:
     """
     Integrated Brier score for administrative censorship.
 
@@ -509,8 +509,8 @@ def integrated_brier_score_administrative(
 
 
 def integrated_brier_score_administrative_sklearn_metric(
-    y_true: np.ndarray, y_pred: np.ndarray[tuple[int, int], np.dtype[np.floating]]
-):
+    y_true: np.ndarray, y_pred: np.ndarray[tuple[int, int], np.dtype[np.float64]]
+) -> float:
     """
     Scikit-learn metric for Integral of brier scores for administrative
     censorship.
